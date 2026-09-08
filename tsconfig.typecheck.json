@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "baseUrl": ".",
+    "paths": {
+      "cc": ["./extensions/cocos-mcp-server/node_modules/@cocos/creator-types/engine/cc.d.ts"]
+    }
+  },
+  "include": ["assets/scripts/**/*.ts"]
+}

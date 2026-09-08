@@ -1,0 +1,25 @@
+{
+  "name": "animal-market",
+  "version": "0.1.0",
+  "type": "project",
+  "uuid": "c1f0a9d2-3b47-4e8a-9c15-6f2d8b7e4a10",
+  "creator": {
+    "version": "3.8.8",
+    "registry": {
+      "remote": {}
+    },
+    "dependencies": {
+      "localization-editor": "1.0.4"
+    }
+  },
+  "description": "动物集市 · 微信小游戏（核心玩法版）",
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  },
+  "scripts": {
+    "sim": "node --experimental-strip-types --no-warnings --import ./tools/sim/register.mjs tools/sim/run.ts",
+    "sim:check": "node --experimental-strip-types --no-warnings --import ./tools/sim/register.mjs tools/sim/run.ts 5 1600",
+    "sim:verify": "node --experimental-strip-types --no-warnings --import ./tools/sim/register.mjs tools/sim/run.ts verify 100",
+    "test:hopeless": "node --experimental-strip-types --no-warnings --import ./tools/sim/register.mjs tools/test-hopeless.ts"
+  }
+}

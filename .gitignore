@@ -1,0 +1,9 @@
+library/
+temp/
+local/
+build/
+profiles/
+node_modules/
+tools/sim/dist/
+*.log
+.DS_Store
