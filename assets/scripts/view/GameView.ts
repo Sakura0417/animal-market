@@ -1,6 +1,16 @@
 /* ============================================================
  * GameView（VIEW 总控 · A1）——《动物集市》Cocos 移植的对局组装层
- * 修改时间：2026-09-07 17:31（方案A复查：确认无绕过容量门的入栏路径 + 新增 BUILD_TAG 版本戳与 watchdog 状态探针）
+ * 修改时间：2026-09-10 21:41 —— ① 吊车取消"首次免费"，改为每次使用都看激励视频（与翻转/洗牌
+ *   同构，craneUsed 字段退役）；② failFence 面板接线由 4 出口收为 2（放生看广告 / 重开）；
+ *   ③ failHp 复活提示语改"恢复 1 颗"（core REVIVE_HP 配套）。
+ *   2026-09-10 18:33（① 暂停链路清退：HUD 暂停钮 + showPause + Panels.pause；
+ *   ② start 预热 preloadIcons。上次：2026-09-09 23:35 P1.5 紧密化 view 适配：① moveTo 出栏三级回落——干净走廊直走 →
+ *   BFS 沿空格寻路穿缝隙出栏 → 弧线仅理论极限兜底，根治"漂移感"；② 接触距离改
+ *   格距−精灵宽常量公式，coreRadiusPx/R 投影换算退役；头部注释见 core/Board.ts P1.5 条目；
+ * 2026-09-10 19:52（取消绕行机制：出栏恒为沿自身朝向直走，pickExitDir/findExitPath 已删）；
+ *   2026-09-09 22:30（穿透修复迭代 2：就近绕行替代弧线兜底；
+ *   21:25 穿透修复：出栏走廊占用则回落弧线飞出 + 并发入栏车道错位；
+ *   20:50 输入锁收窄：装车/发车动画期不再锁动物入栏 + busy 簿记与代数解耦 + 隐藏发车 toast）
  * （初版 2026-09-05 23:47:00；历次修复/迭代均以时间戳注明在各方法内注释：
  *   00:26 布局锚点 column 化；01:24 关卡牌刷新；02:15 碰撞真实接触；
  *   02:20 走出牧场入栏；09:30 土路/看门狗/难度外环；10:05 土路加宽 + 沿路行走；
@@ -26,14 +36,19 @@
  * 纪律：
  *   - 动画代数 fxGen 与原型一致：重开局 +1，旧代 scheduleOnce 回调一律作废；
  *     同时用 unscheduleAllCallbacks 双保险清掉挂起计时（crane/fail/装车链）。
- *   - busy 锁：任何飞行动画期间锁玩家输入（与原型 busy 计数一致）。
+ *   - busy 锁（2026-09-09 收窄）：只串行化**装车/发车链**（reconcile:502 门控），
+ *     不再锁动物入栏（takeAnimal/moveTo 已去 busy 门）。原因：装车动画 1.5-2.5s 期间静默吞掉
+ *     全部点击且无反馈（用户报"点击无响应 + 提示期间点不动"）；入栏容量由 FENCE_MAX 门承担，
+ *     core 数据先行 + reconcile 幂等（guard 25）保证并发安全。
+ *   - busy 簿记与代数解耦（同 walks 硬化）：busy-- 必须先于 fxGen 判定执行，且只做一次。
  *   - coinsShown：HUD 金币数字等 flyCoin 飞达才更新（入账爽感，原型同款）。
  * 布局（原型 game.html + styles.css 换算，375 设计宽；列宽 351 = 375 - 12*2）：
  *   padding 6/12/12 ｜ HUD(34)+10 ｜ park(84)+8 ｜ fence(40)+10 ｜ pen(flex:1)+10 ｜ tools(54)
  * ============================================================ */
 import { _decorator, Component, Node, Tween, tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { GameSession } from '../core/GameSession';
-import { CONTACT_DIST, CONTACT_FLOOR, CONTACT_OVERLAP, CONTACT_TRAVEL_MAX, CONTACT_TRAVEL_MIN, CONTACT_TRAVEL_SPEED, FENCE_MAX, SLOT_TOTAL, TYPES } from '../core/Constants';
+
+import { CONTACT_DIST, CONTACT_FLOOR, CONTACT_TRAVEL_MAX, CONTACT_TRAVEL_MIN, CONTACT_TRAVEL_SPEED, FENCE_MAX, SLOT_TOTAL, TYPES, WALK_LANE_GAP } from '../core/Constants';
 import type { Animal, Dir, Match } from '../core/Types';
 import { AdService } from '../services/AdService';
 import { LastResult, SaveService } from '../services/SaveService';
@@ -41,6 +56,8 @@ import { col, dashedRoundRect, newG } from './Draw2D';
 import { FenceView } from './FenceView';
 import { FxService } from './FxService';
 import { HudView } from './HudView';
+import { preloadIcons } from './IconArt';
+import { preloadAnimalArt } from './AnimalArt';
 import { Panels } from './Panels';
 import { ParkView } from './ParkView';
 import { PenView } from './PenView';
@@ -95,11 +112,11 @@ export class GameView extends Component {
   private walkingUids = new Set<number>(); // 在途动物 uid（围栏条隐藏其落格显示，防"分身"）
   private fxGen = 0;                   // 动画代数：重开局 +1，旧代回调作废
   private craneMode = false;           // 吊车瞄准模式
-  private craneUsed = 0;               // 本局吊车已用次数（首次免费，之后看广告）
   private doubled = false;             // 营收翻倍（win 面板广告点位）
   private coinsShown = 0;              // HUD 显示金币（等 flyCoin 飞达才追平 session.coins）
   private lostHeartIdx = -1;           // 刚失去的心 index（心碎动画一次性标记）
   private firstRun = true;             // 本次启动是否弹「开局须知」（重开/下一关不弹）
+  private booted = false;              // start 的素材预加载是否已完成（onDestroy 前置守卫）
   private design!: Node;               // 设计空间宿主（DW×DH，等比缩放）
   private roadBand = 13.25;            // 土路中心线距牧场边界的偏移（buildLayout 内赋值）
 
@@ -147,7 +164,20 @@ export class GameView extends Component {
    * 生命周期与装配
    * ============================================================ */
 
-  start(): void {
+  /** 首屏装配（2026-09-10 改造）：**先把素材备齐再 buildLayout**。
+   *  原因：动物/图标都是「异步加载 + 矢量占位回退」的双层结构，若先搭 UI 再等素材，
+   *  进场必然先渲染一帧矢量占位再跳成图片（用户截图反馈"先加载之前的图标，再加载动物资源"）。
+   *  预加载走的是 resources 本地资源（6 张动物图 + 8 张图标，总计约 300KB），耗时约 1 帧；
+   *  预加载完成后各素材 cache 命中，回调同步执行 ⇒ 首帧即最终形态，无闪烁。 */
+  async start(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      let left = 2;
+      const done = (): void => { if (--left === 0) resolve(); };
+      preloadAnimalArt(done);
+      preloadIcons(done);
+    });
+    if (!this.node || !this.node.isValid) return;   // 加载期间节点已销毁（切场景/热重载）
+    this.booted = true;
     this.level = SaveService.loadLevel();   // 续档：从存档关卡进入对局
     this.buildLayout();
     // dev/浏览器：把 Panels 的 3 秒演示广告层注入 AdService（wx 真机自动切换真实广告）
@@ -157,6 +187,7 @@ export class GameView extends Component {
   }
 
   onDestroy(): void {
+    if (!this.booted) return;               // start 的 await 还没回来 → 子系统尚未创建，别碰
     this.panels.adCancel();                 // 清掉演示广告的 setTimeout
     this.unscheduleAllCallbacks();
   }
@@ -200,9 +231,8 @@ export class GameView extends Component {
     // 内容列左缘：宽扁屏（dw>375）时 375 列居中，两侧用底色补齐
     const colX = (dw - DESIGN_W) / 2 + COL_PAD;
 
-    // 顶部 HUD（暂停/重开/关卡牌/生命/进度/金币）
+    // 顶部 HUD（重开/关卡牌/生命/进度/金币）—— 暂停钮已移除（无实际功能）
     this.hud = new HudView(column, colX, HUD_TOP, DESIGN_W - COL_PAD * 2, {
-      onPause: () => this.showPause(),
       onRestart: () => this.requestRestart(),
     });
     // 停车位公路带（锁定车位点击 → 广告解锁）
@@ -264,7 +294,6 @@ export class GameView extends Component {
     this.walks = 0;
     this.walkingUids.clear();
     this.craneMode = false;
-    this.craneUsed = 0;
     this.doubled = false;
     this.coinsShown = 0;
     this.lostHeartIdx = -1;
@@ -302,7 +331,14 @@ export class GameView extends Component {
   }
 
   private renderPark(): void {
-    this.park.render(this.session.slots, this.session.fenceCount());
+    const s = this.session;
+    // 空车位自愈兜底（2026-09-10）：tryDispatch 幂等（非 empty 槽直接跳过），play 态下
+    // 只要存在空车位就尝试补车。正常链路（start/unlockSlot/settleSlot→tryDispatch）已覆盖
+    // 绝大多数场景；此处兜住"makeOrder 概率性采样失败后无调用点重试"的窗口——任何后续
+    // 渲染时机（点动物/装车/动画回调）都会自然重试，偏向采样是概率性的，多试必成功；
+    // 真供给不足（全场每种 avail≤1，终局形态）时 makeOrder 返回 null，槽保持空属合理。
+    if (s.canPlay() && s.slots.some(sl => sl.state === 'empty')) s.tryDispatch();
+    this.park.render(s.slots, s.fenceCount());
   }
 
   /** 围栏条：needs = 在场订单的需求类型集合（匹配高亮）；隐藏集 = 在途动物 ∪ 显式 uid */
@@ -317,8 +353,8 @@ export class GameView extends Component {
     this.fence.render(this.session.fence, needs, hide);
   }
 
-  private renderPen(unlock: Set<number> | null = null): void {
-    this.pen.render(this.session.herd, this.craneMode, unlock);
+  private renderPen(): void {
+    this.pen.render(this.session.herd, this.craneMode);
   }
 
   /** HUD：进度 = 牧场剩余 + 围栏存货（原型 progEl 口径）；渲染后清掉心碎标记 */
@@ -330,7 +366,7 @@ export class GameView extends Component {
 
   private renderTools(): void {
     const s = this.session;
-    this.tools.render(s.craneLeft, this.craneUsed, this.craneMode, s.flipLeft, s.shufLeft);
+    this.tools.render(s.craneLeft, this.craneMode, s.flipLeft, s.shufLeft);
   }
 
   /** 设计坐标 → 世界坐标（win 大飘字等以设计坐标表达） */
@@ -344,7 +380,10 @@ export class GameView extends Component {
 
   private takeAnimal(uid: number): void {
     const s = this.session;
-    if (!s.canPlay() || this.busy > 0) return;
+    // 2026-09-09 输入锁收窄：去掉 `|| this.busy > 0`。装车/发车链（fulfillSlot→departSlot）
+    // 期间旧逻辑静默吞掉全部动物点击且无反馈，与"卡车发车"提示时长(≈2.7s)重合被误读为提示拦截。
+    // 入栏安全性由 moveTo 的 FENCE_MAX 容量门 + core 数据先行 + reconcile 幂等保证。
+    if (!s.canPlay()) return;
     let a: Animal | null = null;
     for (const x of s.herd) if (x.uid === uid) { a = x; break; }
     if (!a || a.obstacle) return;
@@ -369,17 +408,16 @@ export class GameView extends Component {
       const node = this.pen.byUid(uid);
       const g0 = this.fxGen;
 
-      // 接触距离：遮挡者沿 dir 的投影距离 - 两个身位（略带重叠更有"撞实"感）
-      // 参数收编进 core/Constants（PRD 2.0 D2，2026-09-06 22:25）：兜底 CONTACT_DIST=21 / 下限 10 / 重叠 0.95 / 380px/s / 0.14~0.6s
+      // 接触距离（2026-09-10 19:17 随走廊遮挡语义更新）：遮挡者是**朝向路径上的第一个占用者**，
+      // 可能在 1~N 格之外 → 冲刺距离 = 格数 × 格距 − 精灵显示宽（下限 CONTACT_FLOOR）。
+      // 动物因此"保持向前运动，直到撞上挡路者才发生碰撞"（用户需求），不再出现掉头/绕行。
       let hitDist = CONTACT_DIST;
       let contactW: Vec3 | null = null;
       const blocker = s.blockerOf(a);
       if (node && blocker) {
         const f = node.pos;                        // pen 本地（cocos y 向上，负值向下）
-        const bPos = this.pen.posLocal(blocker.x, blocker.yu);
-        const horiz = a.dir === 'left' || a.dir === 'right';
-        const proj = horiz ? Math.abs(bPos.x - f.x) : Math.abs(bPos.y - f.y);
-        hitDist = Math.max(CONTACT_FLOOR, proj - 2 * this.pen.coreRadiusPx() * CONTACT_OVERLAP);
+        const cells = Math.abs(blocker.col - a.col) + Math.abs(blocker.row - a.row); // 同线格距
+        hitDist = Math.max(CONTACT_FLOOR, cells * this.pen.cellPitchPx(a.dir) - this.pen.animalSize());
         const DIRV: Record<Dir, Vec3> = {
           up: new Vec3(0, 1, 0), down: new Vec3(0, -1, 0),
           left: new Vec3(-1, 0, 0), right: new Vec3(1, 0, 0),
@@ -432,11 +470,12 @@ export class GameView extends Component {
     const s = this.session;
     // 方案A（2026-09-07 15:43）：加围栏容量门——fence 数据先行已含在途动物，≥FENCE_MAX 不再放行。
     // 堵死 core takeAnimal 无上限 push 的超载通道（配对改动：reconcile 去 walks 门控，实时装车腾位）
-    if (!s.canPlay() || this.busy > 0 || s.fence.length >= FENCE_MAX) return;
+    // 同上（2026-09-09）：去 busy 门，保留 canPlay + FENCE_MAX 容量门（超载通道仍被堵死）
+    if (!s.canPlay() || s.fence.length >= FENCE_MAX) return;
     const fromW = this.pen.uidWorld(uid) ?? this.pen.node.worldPosition.clone(); // 起飞点（渲染清理前抓取）
+    const lane = this.walks % 3;                 // 车道号（0/1/2）：单只在途恒为 0 → 路径与改造前一致
     this.walks++;                                // 并发点击（14:05）：行走不再锁 busy
     this.walkingUids.add(uid);
-    const before = new Set(s.unlockedSet());     // 变更前解锁集（落地后算新解锁弹跳）
     const out = s.takeAnimal(uid, viaCrane);     // 数据先行：herd.splice + fence.push
     if (out.kind !== 'fly' && out.kind !== 'crane') { this.walks--; return; }
     const g0 = this.fxGen;
@@ -464,9 +503,9 @@ export class GameView extends Component {
         return;                                  // 仍无可满足 → 维持 failwait 等 failTick 终裁
       }
       if (!s.canPlay()) return;
-      // 新解锁动物：解锁弹跳（原型 pendingUnlock）
-      const news = s.unlockedSet().filter((u) => !before.has(u));
-      if (news.length) this.renderPen(new Set(news));
+      // 2026-09-10 17:16：移除"新解锁动物弹跳"（原 PRD 5.1 unlockBounce）——用户反馈点击
+      //   一只动物后周围动物放大（bounceUnlock scale 0.85→1.16→1.0）观感为"点击效果泄漏"，
+      //   不符合预期。现点击只影响被点动物自身（走出/bonk），周围动物显示状态零变化。
       if (s.fence.length >= FENCE_MAX) {
         // 围栏满：0.5s 缓冲等装车链消化；failTick 终局裁决（可满足 → 装车放行，
         // 确实无可满足订单才弹挤爆面板——需求 3 语义）
@@ -476,16 +515,20 @@ export class GameView extends Component {
       }
       if (s.allLocked()) this.toast.show('⚠️ 全场互相挡住了！点被挡动物会扣生命，或用吊车吊走');
     };
+    // 2026-09-10 19:52 取消绕行机制（用户指令）：出栏只剩一条路径——**沿自身朝向直走上土路**。
+    // 走廊遮挡语义下（core blockedBy = 沿朝向第一占用者），能入栏的动物朝向路径必然全程空，
+    // 因此直走既不会掉头、也不会穿透；路径被占 = 被判被挡 = 走 collide 分支（冲撞扣心），
+    // 根本不进此分支。原三级回落（pickExitDir 绕行 → BFS 穿缝隙 → 弧线）已全部删除。
     if (out.kind === 'fly') {
-      // 需求（2026-09-06 10:05 迭代）：普通拿取 = 按朝向走到土路 → 沿土路跑到围栏口
-      // → 入栏（多段折线；吊车吊走仍走飞行，被吊起不该穿地跑路）。
-      const bandOffset = this.roadBand;                  // 与 buildLayout 绘制的路带中心线一致
+      // 需求（2026-09-06 10:05 迭代）：普通拿取 = 走到土路 → 沿土路跑到围栏口 → 入栏
+      // 车道错位（方案D）：并发在途动物共享同一条土路中心线会互穿，按车道号整体外推路带
+      const bandOffset = this.roadBand + lane * WALK_LANE_GAP;   // 与 buildLayout 绘制的路带中心线一致
       // 路径末点延伸到围栏格本身（10:50 补）：沿土路跑到引道口后再跑进入栏格
       const wayWs = this.pen.roadWaypoints(out.animal, bandOffset).map((p) => this.pen.localToWorld(p));
       wayWs.push(toW);
-      this.fx.walkPath(out.animal, fromW, wayWs, this.pen.animalSize(), onArrive);
+      this.fx.walkPath(out.animal, fromW, wayWs, this.pen.animalSize(), onArrive, out.animal.dir);
     } else {
-      this.fx.flyAnimal(out.animal, fromW, toW, 42, onArrive);
+      this.fx.flyAnimal(out.animal, fromW, toW, 42, onArrive);     // 吊车吊走：被吊起走弧线
     }
   }
 
@@ -500,6 +543,7 @@ export class GameView extends Component {
    *  围栏满却不装车不判败、动物持续涌入（play↔failwait 反复横跳）。 */
   private reconcile(): void {
     if (this.busy > 0) return;
+    const g0 = this.fxGen;             // 2026-09-09：departSlot 失配也回调 done，此处自行判代数决定是否续链
     let guard = 0;
     const step = (): void => {
       const s = this.session;
@@ -513,7 +557,7 @@ export class GameView extends Component {
       for (let i = 0; i < SLOT_TOTAL; i++) {                 // 死单空驶换车
         const sl = s.slots[i];
         if (sl.state === 'truck' && sl.order && !s.orderSatisfiable(sl.order)) {
-          this.departSlot(i, null, step);
+          this.departSlot(i, null, () => { if (g0 !== this.fxGen) return; step(); });
           return;
         }
       }
@@ -544,18 +588,27 @@ export class GameView extends Component {
       return this.fence.slotWorld(k >= 0 ? k : 0);
     });
     // 数据先行：移出围栏 + 结算金币 + 订单转 loading（core beginFulfill）
-    const { value } = s.beginFulfill(match);
+    s.beginFulfill(match);             // 返回值 value 不再用于 toast（发车提示已隐藏，营收由 flyCoin 反馈）
     this.renderAll();
     const truckPt = this.park.slotWorld(idx);
+    /** busy 簿记与代数解耦（2026-09-09，同 walks 硬化）：任何 fxGen 失配的早退分支都必须先释放锁，
+     *  否则代数变更后 busy 永久 +1 → 全场点击死锁（旧代码仅在正常回调里 busy--，存在该隐患）。 */
+    let released = false;
+    const release = (cont: boolean): void => {
+      if (released) return;
+      released = true;
+      this.busy--;
+      if (cont && done) done();
+    };
     let i = 0;
     const loadNext = (): void => {
-      if (g0 !== this.fxGen) return;
+      if (g0 !== this.fxGen) { release(false); return; }
       if (i >= taken.length) { this.scheduleOnce(afterAll, 0.16); return; }
       const a = taken[i];
       const from = froms[i];
       i++;
       this.fx.flyAnimal(a, from, truckPt, 34, () => {
-        if (g0 !== this.fxGen) return;
+        if (g0 !== this.fxGen) { release(false); return; }
         s.pushLoaded(idx, a);          // cargo 可视化
         this.renderPark();
         this.park.bump(idx);           // 落货下沉回弹
@@ -563,16 +616,17 @@ export class GameView extends Component {
       });
     };
     const afterAll = (): void => {
-      if (g0 !== this.fxGen) return;
+      if (g0 !== this.fxGen) { release(false); return; }
       // 金币飞向 HUD（到达才入账）与发车链并行（原型同款并行）
       this.fx.flyCoin(truckPt, this.hud.coinWorld(), () => {
         if (g0 !== this.fxGen) return;
         this.coinsShown = s.coins;
         this.renderHud();
       });
-      this.departSlot(idx, '卡车发车 · 营收 +' + value, () => {
-        this.busy--;
-        if (done) done();
+      // 发车提示已隐藏（2026-09-09 用户要求）：营收反馈改由金币飞向 HUD 承担
+      this.departSlot(idx, null, () => {
+        if (g0 !== this.fxGen) { release(false); return; }
+        release(true);
       });
     };
     loadNext();
@@ -586,7 +640,9 @@ export class GameView extends Component {
     this.renderPark();                 // ParkView diff 到 leaving → playLeave 动画
     if (msg) this.toast.show(msg);
     this.scheduleOnce(() => {
-      if (g0 !== this.fxGen) return;
+      // 代数失配也必须回调 done（2026-09-09）：调用方要靠它完成 busy 簿记；
+      // 是否续链由调用方自行判代数决定，避免旧行为"失配即不回调 → 锁永久泄漏"。
+      if (g0 !== this.fxGen) { if (done) done(); return; }
       if (s.slots[idx].state !== 'leaving') { if (done) done(); return; }
       s.settleSlot(idx);               // core：state → empty +（play 态）tryDispatch 补车
       this.renderPark();
@@ -598,17 +654,15 @@ export class GameView extends Component {
    * 救援道具（原型 enterCraneMode / armCrane / useFlip / useShuffle）
    * ============================================================ */
 
+  /** 吊车激活（2026-09-10 21:41 用户需求：与翻转/洗牌保持同构）：
+   *  取消旧的"每局首次免费、之后才看广告"特权 —— 吊车与翻转、洗牌一样是**广告道具**，
+   *  额度 2 次（core CRANE_MAX），每次进入瞄准模式都需看完激励视频，用尽后按钮置灰。
+   *  ⇒ craneUsed 字段随之退役（广告角标改为常显，见 ToolsBar.render）。 */
   private enterCraneMode(): void {
     const s = this.session;
     if (!s.canPlay() || this.busy > 0 || this.craneMode) return;
     if (s.craneLeft <= 0) { this.toast.show('本局吊车次数已用完'); return; }
-    if (this.craneUsed === 0) {
-      this.craneUsed++;                // 每局首次免费
-      this.armCrane(false);
-      return;
-    }
     this.ad.show(() => {
-      this.craneUsed++;
       this.armCrane(false);
     });
   }
@@ -666,7 +720,8 @@ export class GameView extends Component {
    * 失败链（原型 failFence / failHP / noStockEnd）
    * ============================================================ */
 
-  /** 围栏挤爆：三条出路（放生/清仓看广告，求救免费）+ 重开 */
+  /** 围栏挤爆：两条出路 —— 看广告放生 3 只续局 / 免费重开
+   *  （2026-09-10 21:41 用户需求：摘除"清仓大甩卖"与"好友求救"两个旧出口） */
   private failFence(): void {
     this.session.markOutcome('fail');
     track({ event: 'level_fail', level: this.session.level, reason: 'fence' });   // T8 埋点
@@ -677,18 +732,6 @@ export class GameView extends Component {
         this.coinsShown = this.session.coins;
         this.afterRescue('放生 ' + n + ' 只 · 回收 ' + refund + ' 金币');
       }),
-      () => this.ad.show(() => {   // 清仓大甩卖 · 返还 70%
-        const refund = this.session.sellAll();
-        this.coinsShown = this.session.coins;
-        this.afterRescue('清仓完成 · 回收 ' + refund + ' 金币');
-      }),
-      () => {                      // 发好友求救（演示）· 免费 +1 吊车
-        this.session.addCrane(1);
-        this.session.markOutcome('play');
-        this.panels.hide();
-        this.renderTools();
-        this.toast.show('求救卡已发送（演示）· 获赠 1 次吊车');
-      },
       () => this.startGame()
     );
   }
@@ -720,8 +763,9 @@ export class GameView extends Component {
     });
   }
 
-  /** 生命耗尽：广告回满 3 心原地续局（营收保留），或重开；
-   *  C5（2026-09-06 21:10）：复活上限 REVIVE_MAX 次/局，用尽后仅可放弃重开 */
+  /** 生命耗尽：广告恢复 1 颗心原地续局（营收保留），或重开；
+   *  C5（2026-09-06 21:10）：复活上限 REVIVE_MAX 次/局，用尽后仅可放弃重开
+   *  2026-09-10 21:41 用户需求：回血量由 3 颗降为 1 颗（core REVIVE_HP = 1） */
   private failHP(): void {
     const s = this.session;
     s.markOutcome('fail');
@@ -737,7 +781,7 @@ export class GameView extends Component {
         this.undimBoard();
         this.renderHud();
         this.reconcile();
-        this.toast.show('❤️ 生命回满！继续营业');
+        this.toast.show('❤️ 生命恢复 1 颗，继续营业');
       }),
       () => this.startGame()
     );
@@ -825,16 +869,8 @@ export class GameView extends Component {
   }
 
   /* ============================================================
-   * 暂停 / 重开入口（原型 showPause / restartBtn）
+   * 重开入口（原型 restartBtn；暂停入口 showPause 已随暂停钮移除）
    * ============================================================ */
-
-  private showPause(): void {
-    const s = this.session;
-    if (!s.canPlay()) return;
-    this.panels.pause(s.level, s.herdLeftCount() + s.fence.length, s.hp,
-      () => this.panels.hide(),
-      () => this.startGame());
-  }
 
   /** HUD 重开钮：仅 play / failwait 态可重开（原型 restartBtn 守卫） */
   private requestRestart(): void {

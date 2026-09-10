@@ -1,6 +1,8 @@
 /* 程序化生成低模岩石 rock.glb（占位资产，可被用户生成模型替换）。
  * 规格：Y-up / 脚底原点 y=0 / x,z 居中 / 高度≈1.0 / ~320 三角面 / 顶点色灰岩 / 无贴图无骨骼。
- * 用法：node tools/gen-rock.cjs [输出路径]  （默认 assets/animal/rock.glb）
+ * 用法：node tools/gen-rock.cjs [输出路径]  （默认 assets/resources/art/models/rock.glb，
+ *   即 Farm3D 的 resources.load('art/models/rock') 运行时目标；2026-09-10 修正：
+ *   原默认 assets/animal/rock.glb 既非运行时目录、且该目录已随源图迁移删除）
  * 结构：二十面体 → 2 次细分 → 球形 → 椭球压扁 + 确定性噪声扰动 + 底部压平 → 顶点色。 */
 const fs = require('fs');
 
@@ -118,6 +120,6 @@ header.writeUInt32LE(0x46546C67, 0); header.writeUInt32LE(2, 4);
 header.writeUInt32LE(12 + 8 + jsonBuf.length + jsonPad.length + 8 + bin.length + binPad.length, 8);
 const jh = Buffer.alloc(8); jh.writeUInt32LE(jsonBuf.length + jsonPad.length, 0); jh.writeUInt32LE(0x4E4F534A, 4);
 const bh = Buffer.alloc(8); bh.writeUInt32LE(bin.length + binPad.length, 0); bh.writeUInt32LE(0x004E4942, 4);
-const out = process.argv[2] || 'assets/animal/rock.glb';
+const out = process.argv[2] || 'assets/resources/art/models/rock.glb';
 fs.writeFileSync(out, Buffer.concat([header, jh, jsonBuf, jsonPad, bh, bin, binPad]));
 console.log('rock.glb 已生成: ' + out + '  ' + (fs.statSync(out).size / 1024).toFixed(0) + 'KB  三角面: ' + faces.length + '  顶点: ' + pts.length);

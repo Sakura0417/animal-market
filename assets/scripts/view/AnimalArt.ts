@@ -22,9 +22,13 @@
  *   但 Cocos resources.load 只能加载 assets/resources/ 下的资源，故运行时资源目录定为
  *   assets/resources/animal/（路径 'animal/{species}'），原始 2048 图经 process-animal-art.cjs
  *   降采样后输出到此；旧目录 assets/resources/art/animals/ 已废弃并备份到 raw-art/。
+ * 2026-09-10 18:33：原始大图源目录迁出 assets/（避免被编辑器当纹理资产导入、且一旦被
+ *   引用就冲进 4MB 主包）→ ../raw-art/animals-2048-src/，process-animal-art.cjs 默认
+ *   srcDir 已同步。运行时目录 assets/resources/animal/ 不变。
  * 2026-09-07 12:00 历史：图片默认以 texture 类型导入（无 spriteFrame 子资源），
  *   改为加载 'xxx/texture' 为 Texture2D 后运行时动态构造 SpriteFrame。 */
 import { Node, resources, Sprite, SpriteFrame, Texture2D, UITransform } from 'cc';
+import { ANIMAL_SCHEMA } from '../core/AnimalSchema';
 import { drawAnimal, newG } from './Draw2D';
 
 export type ArtMode = 'sprite' | 'vector';
@@ -48,6 +52,33 @@ export function loadAnimalSpriteFrame(species: string, _dir: string, cb: (sf: Sp
     if (!result) console.warn('[AnimalArt] 素材缺失，回退矢量绘制：', species, err);
     cb(result);
   });
+}
+
+/**
+ * 预加载全部动物素材（2026-09-10，修"进场先闪一帧矢量动物"）。
+ *
+ * 问题成因：素材走异步 resources.load，而 AnimalNode / animalIcon 都是
+ * 「先画矢量占位 → 加载完再换成 sprite」的双层结构 ⇒ 进场必然先看到一帧矢量动物
+ * 再跳成顶视角图（用户截图反馈"先加载之前的图标，再加载动物资源"）。
+ *
+ * 解法：不去掉回退层（素材缺失时还得靠它兜底），而是**在搭 UI 之前把素材备齐**——
+ * 预加载完成后 cache 命中，各处 loadAnimalSpriteFrame 的回调**同步执行**，
+ * 第一帧画出来就已经是 sprite，矢量层创建即被隐藏，肉眼零感知。
+ *
+ * cb 一定会被调用（**含加载失败**）：失败时 cache 存 null，各处按既有纪律回退矢量，
+ * 启动流程不因单个素材缺失而卡死。启动期只等一次，之后同 species 全走缓存。
+ */
+export function preloadAnimalArt(cb?: () => void): void {
+  const ids = ANIMAL_SCHEMA.map(d => d.id);
+  let left = ids.length;
+  if (left === 0) { cb?.(); return; }
+  const done = (): void => { if (--left === 0) cb?.(); };
+  for (const id of ids) loadAnimalSpriteFrame(id, 'up', done);
+}
+
+/** 读取已缓存的 SpriteFrame（不触发加载）。undefined = 尚未加载，null = 已加载但失败。 */
+export function cachedAnimalFrame(species: string): SpriteFrame | null | undefined {
+  return cache.get(species);
 }
 
 /**

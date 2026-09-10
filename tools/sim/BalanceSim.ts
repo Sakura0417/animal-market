@@ -162,12 +162,13 @@ function runBot(recover: boolean): BotResult {
       if (S.flipLeft > 0) {
         S.flipLeft--;
         S.herd.forEach(function (a) { if (!a.obstacle) a.dir = randDir(S.rng); });
+
         steps++;
         continue;
       }
       if (S.shufLeft > 0) {
         S.shufLeft--;
-        reflow(S.herd, S.rng);
+        reflow(S.herd, S.rng, S.cfg.tightness); /* P1.5：洗牌分布与生成器一致（tightness 透传） */
         steps++;
         continue;
       }

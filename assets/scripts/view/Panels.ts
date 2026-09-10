@@ -1,16 +1,20 @@
-/* Panels（VIEW）：模态面板系统 —— 暂停/挤爆/生命耗尽/滞销/通关/开局须知 + Mock 广告层。
+/* Panels（VIEW）：模态面板系统 —— 挤爆/生命耗尽/滞销/通关/开局须知 + Mock 广告层。
+ * （暂停面板 pause 已随 HUD 暂停钮移除，2026-09-10）
  * 结构：modal（全屏暗遮罩 + 吞触摸）→ panelHost（锚点0.5,1 从中心向下生长，
  * 布局完成后 y = h/2 回到垂直居中）→ 内容游标自上而下堆叠。
  * 通关面板带 win-pop 弹性弹出（原型 cubic-bezier(.3,1.5,.5,1) ≈ back-out）。
- * 修改时间：2026-09-08 —— 通关面板售出统计动物图标改统一 animalIcon（矢量占位+sprite 切换）；
+ * 修改时间：2026-09-10 21:41 —— ① failFence 由 4 项砍为 2 项（吊车放生 3 只·看广告 / 重开），
+ *   去掉"清仓大甩卖"与"发好友求救"（用户需求：失败转化位只留广告 + 重开两条出路）；
+ *   ② failHp 复活文案"回满 3 颗"→"回 1 颗"（core REVIVE_HP=1 配套）。
+ * 2026-09-08 —— 通关面板售出统计动物图标改统一 animalIcon（矢量占位+sprite 切换）；
  *   2026-09-06 21:10 —— P5：① failHp 增 canRevive 参数（C5 复活上限 2/局，
  *   超限不渲染复活广告按钮）；② win 增 stars 参数渲染星级行（C3 星级按剩余生命结算）。
  *   00:36 —— 修复 begin() wipeChildren 误毁持久面板底板的渲染 bug（详见 begin 内注释）。 */
 import { Label, Node, Tween, tween, UIOpacity, UITransform, Vec3 } from 'cc';
-import { col, colA, drawCoin, makeLabel, newG } from './Draw2D';
+import { col, colA, drawCoin, makeLabel, newG, wrapTextByWidth } from './Draw2D';
 import { animalIcon } from './AnimalArt';
-import { icon64, mkBtn, place, placeC, swallow, wipeChildren } from './Ui';
-import { HP_MAX } from '../core/Constants';
+import { ICON_PX, iconArt } from './IconArt';
+import { mkBtn, place, placeC, swallow, wipeChildren } from './Ui';
 
 export interface PanelBtn {
   kind: 'primary' | 'blue' | 'green' | 'ghost';
@@ -20,6 +24,7 @@ export interface PanelBtn {
 }
 
 const PW = 320; // 面板宽（原型 max-width 320）
+const SUB_X = -140; // 副文案左缘（面板左缘 -160 起留 20 缩进）
 
 export class Panels {
   readonly node: Node;
@@ -144,14 +149,23 @@ export class Panels {
     this.cursor += 24 + 8;
   }
 
+  /** 副文案（12.5px，左对齐 x=-140 起）。
+   *  2026-09-10 加按宽断行：Label 是 Overflow.NONE（**忽略 contentSize 按原文宽度渲染**），
+   *  此前单行原样输出，超宽文案会直接冲出面板右缘——实测
+   *  `第N关 · 牧场已清空但围栏剩 N 只无人要 · 营收 N` = 335.8 > 可用 300。
+   *  现改为超宽自动折行，游标按**实际行数**前进，面板高度随之自适应。 */
   private sub(lines: string[]): void {
+    const MAX_W = PW / 2 - 16 - SUB_X;      // 面板右缘留 16 的安全边距
     lines.forEach(l => {
-      const t = makeLabel(l, 12.5, '#8b95a3', false);
-      t.horizontalAlign = 0; // LEFT
-      t.node.getComponent(UITransform)!.setAnchorPoint(0, 1);
-      t.node.setPosition(-140, -this.cursor, 0);
-      this.host.addChild(t.node);
-      this.cursor += 19;
+      for (const row of wrapTextByWidth(l, MAX_W, 12.5)) {
+        const t = makeLabel(row, 12.5, '#8b95a3', false);
+        t.label.horizontalAlign = Label.HorizontalAlign.LEFT;   // 修：旧代码写 t.horizontalAlign（挂在包装对象上，从未生效）
+        t.label.enableWrapText = false;      // 已手动断行，禁止引擎再折
+        t.node.getComponent(UITransform)!.setAnchorPoint(0, 1);
+        t.node.setPosition(SUB_X, -this.cursor, 0);
+        this.host.addChild(t.node);
+        this.cursor += 19;
+      }
     });
     this.cursor += 6;
   }
@@ -187,22 +201,14 @@ export class Panels {
     this.end();
   }
 
-  pause(level: number, left: number, hp: number, onResume: () => void, onRestart: () => void): void {
-    this.begin();
-    this.title('暂停营业');
-    this.sub(['第' + level + '关 · 还剩 ' + left + ' 只动物 · 生命 ' + hp + '/' + HP_MAX + ' 颗']);
-    this.btn({ kind: 'primary', title: '继续营业', onTap: onResume });
-    this.btn({ kind: 'ghost', title: '重新开局', onTap: onRestart });
-    this.end();
-  }
-
-  failFence(onRelease: () => void, onSellAll: () => void, onHelp: () => void, onRestart: () => void): void {
+  /** 围栏挤爆：两条出路 —— 看广告吊车放生 3 只（续局）/ 重开。
+   *  2026-09-10 21:41 用户需求：删除"清仓大甩卖·看广告"与"发好友求救·免费"两项，
+   *  失败转化位收敛为「广告续局 + 免费重开」，与生命耗尽面板结构对齐（保持"广告在上、重开在下"）。 */
+  failFence(onRelease: () => void, onRestart: () => void): void {
     this.begin();
     this.title('围栏挤爆了！');
     this.sub(['7 格围栏已满，且当前订单无法完成。']);
     this.btn({ kind: 'blue', title: '吊车放生 3 只 · 看广告', note: '返还基础价 50% 金币 · 继续本局', onTap: onRelease });
-    this.btn({ kind: 'blue', title: '清仓大甩卖 · 看广告', note: '全部围栏动物按 70% 卖给收购商人', onTap: onSellAll });
-    this.btn({ kind: 'ghost', title: '发好友求救 · 免费', note: '好友点击后获赠 1 次吊车', onTap: onHelp });
     this.btn({ kind: 'ghost', title: '放弃重开（免费）', onTap: onRestart });
     this.end();
   }
@@ -213,7 +219,8 @@ export class Panels {
     this.sub(['小动物们撞来撞去，牧场围栏被撞坏了', '牧场还剩 ' + left + ' 只没卖掉']);
     // C5（2026-09-06 21:10）：本局复活次数用尽（REVIVE_MAX）后不提供广告复活位
     if (canRevive) {
-      this.btn({ kind: 'blue', title: '生命回满 3 颗 · 看广告', note: '原地继续本局 · 已卖营收保留', onTap: onRevive });
+      // 2026-09-10 21:41：回血数由 3 改 1（core REVIVE_HP 配套，文案不得再写死数字）
+      this.btn({ kind: 'blue', title: '生命恢复 1 颗 · 看广告', note: '原地继续本局 · 已卖营收保留', onTap: onRevive });
     } else {
       this.sub(['今日复活次数已用完，试试重开一局吧']);
     }
@@ -252,7 +259,7 @@ export class Panels {
     const row = new Node('coinrow');
     placeC(row, 0, -(this.cursor + 17), PW - 40, 34);
     this.host.addChild(row);
-    const ci = icon64('coin', 27, g => drawCoin(g), 64, 32, 32);
+    const ci = iconArt('coin', ICON_PX.panel, drawCoin, 64, 32, 32, undefined, 'coin-win');
     ci.setPosition(-18, 0, 0);
     row.addChild(ci);
     const cn = makeLabel(String(o.coins), 26, '#e07f10');

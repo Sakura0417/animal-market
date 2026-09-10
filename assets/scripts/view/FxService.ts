@@ -2,6 +2,8 @@
  * 通关彩带雨 / 屏幕震动。挂在 gameRoot 顶层（375×667 设计空间）。
  * 点位参数统一传世界坐标（view 各组件 worldPosition），内部换算为本层局部坐标。
  * 代数纪律：reset() 使代数 +1，旧代动画照常播完视觉，但回调一律作废（原型 fxGen）。
+ * 修改时间：2026-09-09 22:30（walkPath 新增 initialDir：绕行出口方向时初始面朝出口）
+ * 修改时间：2026-09-09 21:25（移除 walkPath 内朝向排查遗留的 console.log 诊断日志）
  * 修改时间：2026-09-08（单图顶视角改造）：attachCloneSprite 改返回 spNode 引用，
  *   内部按 dir 设 spNode.angle（不再依赖多张四向图），walkPath 段切换同步改 angle。 */
 import { Node, Sprite, Tween, tween, UIOpacity, UITransform, Vec3 } from 'cc';
@@ -97,7 +99,8 @@ export class FxService {
    * 段速：土路段 360（走）、末段 430（跑）；步频弹跳挂 skin，末段起停并缓缩到 0.62；
    * 每个顶点平滑转向（箭头朝行进方向）。wayWs = 世界坐标路径点（不含起点）。
    */
-  walkPath(a: Animal, fromW: Vec3, wayWs: Vec3[], size: number, done?: () => void): void {
+  walkPath(a: Animal, fromW: Vec3, wayWs: Vec3[], size: number, done?: () => void, initialDir?: Dir): void {
+    const faceDir = initialDir ?? a.dir;   // 绕行出口（2026-09-09）：出口方向 ≠ 自身朝向时，初始面朝出口方向
     const g0 = this.gen;
     const pts = [this.toLocal(fromW), ...wayWs.map((w) => this.toLocal(w))];
     const { node } = newG('walk', size, size);
@@ -107,7 +110,7 @@ export class FxService {
     skin.node.setScale(sk, sk, 1);
     node.addChild(skin.node);
     // 素材模式：克隆体用顶视角图（矢量皮肤作就绪前占位），按行进方向逐段旋转
-    const cloneSp = this.attachCloneSprite(node, a.type.id, a.dir, size, skin.node);
+    const cloneSp = this.attachCloneSprite(node, a.type.id, faceDir, size, skin.node);
     node.setPosition(pts[0].x, pts[0].y, 0);
     this.node.addChild(node);
 
@@ -137,7 +140,7 @@ export class FxService {
           // 语义稳定无歧义，彻底规避 .call() 在不同 cocos 版本/链构造顺序下时序差异。
           // 第 1 段（i=1）不赋值，保持 attachCloneSprite 初始 angle = -CSS_DEG[a.dir]，
           // 与"先沿自身朝向走出农场"的第一段严格一致。
-          console.log(`[walkPath] seg${i} onStart dir=${legDir} prevAngle=${cloneSp?.angle?.toFixed?.(0)}`);
+          // （2026-09-09 21:25 移除朝向排查期遗留的 console.log 诊断日志）
           if (cloneSp && i >= 2) cloneSp.angle = -CSS_DEG[legDir];
           if (last) {
             Tween.stopAllByTarget(skin.node);                // 停步频

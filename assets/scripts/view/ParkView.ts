@@ -3,15 +3,18 @@
  * 槽位结构（锚点(0,1)，62.6×68）：
  *   bgG（每次重绘的底板）· decor（锁位文案等重建层，可点解锁）·
  *   truckWrap（持久：truckG + cargo 池 + needs 行）。
- * 修改时间：2026-09-08 —— 需求行/载货动物图标改统一 animalIcon（矢量占位+sprite 切换）；
- *   2026-09-06 00:12:00 修复 SLOT_COLORS 误从 core/Constants 导入（构建期
- * rollup MISSING_EXPORT，SLOT_COLORS 实际定义于 Draw2D.ts；交接文档 R1 预言的 view 层问题之一）。 */
+ * 修改时间：2026-09-10 18:33 —— 锁位图标/广告角标接 IconArt（PNG sprite+矢量回退；
+ *   白锁 PNG 用 tint 染回 #5a6a78）。2026-09-08 —— 需求行/载货动物图标改统一 animalIcon
+ *   （矢量占位+sprite 切换）；2026-09-06 00:12:00 修复 SLOT_COLORS 误从 core/Constants
+ *   导入（构建期 rollup MISSING_EXPORT，SLOT_COLORS 实际定义于 Draw2D.ts；交接文档 R1
+ *   预言的 view 层问题之一）。 */
 import { Graphics, Node, Tween, tween, UITransform, UIOpacity, Vec3 } from 'cc';
 import { SLOT_TOTAL } from '../core/Constants';
 import type { Animal, Slot } from '../core/Types';
-import { col, colA, dashedRoundRect, drawLock, drawTruck, drawVideoBadge, makeLabel, newG, SLOT_COLORS } from './Draw2D';
+import { col, colA, dashedRoundRect, drawLock, drawTruck, drawVideoBadge, makeLabel, newG, RADIUS, SLOT_COLORS } from './Draw2D';
 import { animalIcon } from './AnimalArt';
-import { place, placeC, wipeChildren, icon64 } from './Ui';
+import { ICON_PX, iconArt } from './IconArt';
+import { place, placeC, placeCornerBadge, wipeChildren } from './Ui';
 
 export class ParkView {
   readonly node: Node;
@@ -30,10 +33,10 @@ export class ParkView {
     const { node, g } = newG('park', w, 84);
     this.node = node;
     // 公路带底色：上浅下深两段 + 顶部内高光
-    g.roundRect(0, -84, w, 84, 14);
+    g.roundRect(0, -84, w, 84, RADIUS.panel);
     g.fillColor = col('#93a0b0');
     g.fill();
-    g.roundRect(0, -84, w, 42, 14);
+    g.roundRect(0, -84, w, 42, RADIUS.panel);
     g.fillColor = col('#7c8999');
     g.fill();
     g.roundRect(0, -2.5, w, 2.5, 0);
@@ -101,25 +104,35 @@ export class ParkView {
       this.truckWrap[i].active = s.state === 'truck' || s.state === 'loading' || s.state === 'leaving';
       if (s.state === 'locked') {
         this.resetSlot(i);
-        g.roundRect(0, -this.sh, this.sw, this.sh, 10);
+        g.roundRect(0, -this.sh, this.sw, this.sh, RADIUS.chip);
         g.fillColor = colA('#3a4452', 105);
         g.fill();
         dashedRoundRect(g, 0, -this.sh, this.sw, this.sh, 10, '#ffffff', 2, 6, 5);
-        const box = newG('lockbox', 18, 18);
-        box.g.roundRect(-9, -9, 18, 18, 5);
+        // 竖向堆叠，整体在槽内居中（2026-09-10 修"锁图标与文案没有间距"）：
+        //   此前盒写死 y=-20（占 -11..-29）、文案写死 -sh/2-4 = -38（占 -26..-50）
+        //   ⇒ **重叠 3px**，截图里锁和"看广告"直接贴在一起。
+        //   改为按「盒 + 间距 + 两行文案」算总高再居中：68 高槽 → 上 10.5 / 内容 47 / 下 10.5，
+        //   盒与文案之间留出明确的 6px 间隙。
+        const BOX = 18, GAP_LOCK_TXT = 6, TXT_LH = 11.5, TXT_LINES = 2;
+        const txtH = TXT_LH * TXT_LINES;
+        const stack = BOX + GAP_LOCK_TXT + txtH;
+        const top = (this.sh - stack) / 2;
+        const box = newG('lockbox', BOX, BOX);
+        box.g.roundRect(-BOX / 2, -BOX / 2, BOX, BOX, RADIUS.micro);
         box.g.fillColor = col('#e8eef4');
         box.g.fill();
-        box.node.setPosition(this.sw / 2, -20, 0);
+        box.node.setPosition(this.sw / 2, -(top + BOX / 2), 0);
         this.decor[i].addChild(box.node);
-        const lock = icon64('lock', 12, gg => drawLock(gg, '#5a6a78'), 17, 12, 11.5);
+        const lock = iconArt('lock', ICON_PX.slotLock, gg => drawLock(gg, '#5a6a78'), 17, 12, 11.5, '#5a6a78');
         box.node.addChild(lock);
         const t = makeLabel('看广告\n解锁车位', 9, '#ffffff', false);
-        t.lineHeight = 11.5;
-        placeC(t.node, this.sw / 2, -this.sh / 2 - 4, this.sw - 4, 24);
+        t.lineHeight = TXT_LH;
+        placeC(t.node, this.sw / 2, -(top + BOX + GAP_LOCK_TXT + txtH / 2), this.sw - 4, txtH);
         this.decor[i].addChild(t.node);
-        const badge = icon64('adbadge', 17, gg => drawVideoBadge(gg), 38, 25, 32);
-        badge.setPosition(this.sw - 7, -7, 0);
+        // 贴角不越界（2026-09-10）：此前写死 (sw-7,-7)，角标半宽 10.5 会戳出虚线框右/上边缘
+        const badge = iconArt('video', ICON_PX.badge, drawVideoBadge, 38, 25, 32, undefined, 'adbadge');
         this.decor[i].addChild(badge);
+        placeCornerBadge(badge, this.sw, ICON_PX.badge);
         this.decor[i].off(Node.EventType.TOUCH_END);
         this.decor[i].once(Node.EventType.TOUCH_END, () => this.onUnlock(i));
         this.syncCargo(i, []);
@@ -128,7 +141,7 @@ export class ParkView {
       }
       if (s.state === 'empty') {
         this.resetSlot(i);
-        g.roundRect(0, -this.sh, this.sw, this.sh, 10);
+        g.roundRect(0, -this.sh, this.sw, this.sh, RADIUS.chip);
         g.fillColor = colA('#ffffff', 36);
         g.fill();
         dashedRoundRect(g, 0, -this.sh, this.sw, this.sh, 10, '#ffffff', 2, 6, 5);
@@ -140,16 +153,16 @@ export class ParkView {
         continue;
       }
       // truck / loading / leaving
-      g.roundRect(0, -this.sh, this.sw, this.sh, 10);
+      g.roundRect(0, -this.sh, this.sw, this.sh, RADIUS.chip);
       g.fillColor = colA('#ffffff', 240);
       g.fill();
       if (s.state === 'loading') {
-        g.roundRect(-1.5, -this.sh - 1.5, this.sw + 3, this.sh + 3, 11);
+        g.roundRect(-1.5, -this.sh - 1.5, this.sw + 3, this.sh + 3, RADIUS.chip + 1);
         g.strokeColor = colA('#58c06c', 120);
         g.lineWidth = 3;
         g.stroke();
       }
-      g.roundRect(0, -this.sh, this.sw, this.sh, 10);
+      g.roundRect(0, -this.sh, this.sw, this.sh, RADIUS.chip);
       g.strokeColor = col('#ffffff');
       g.lineWidth = 2;
       g.stroke();

@@ -11,7 +11,12 @@
  *   稀有金环视觉已移除（2026-09-08 用户要求；rare 仍影响售价与结算文字标注）。
  * 分层避免绘制缩放与 bonk/bounce 动画互相覆盖。
  * 视觉随机量（rot 倾斜）在本层生成，不污染 core 随机流（种子对拍纪律）。
- * 修改时间：2026-09-08（单图顶视角改造：24 张 {species}_{dir}.png → 6 张 {species}.png +
+ * 修改时间：2026-09-10 17:16 —— 移除 bounceUnlock（解锁弹跳缩放 0.85→1.16→1.0）：
+ *   用户反馈点击一只动物后周围新解锁动物放大、观感为"点击效果泄漏"，不符合预期；
+ *   点击只影响被点动物自身（走出 / bonk 冲撞弹回），周围动物显示状态零变化。
+ * 2026-09-09 23:35 —— P1.5·阶段C2：移除 ±26° 随机倾斜（紧密排列下随机倾斜
+ *   表现为"没对齐"，grid-scheme-review §2.4-P5；节点 angle 恒 0，网格对齐）。
+ * 2026-09-08（单图顶视角改造：24 张 {species}_{dir}.png → 6 张 {species}.png +
  *   运行时旋转；AnimalArt.loadAnimalSpriteFrame(species, _dir, cb) dir 作兼容垫片） */
 import { Node, Sprite, SpriteFrame, Tween, tween, UIOpacity, UITransform, Vec3 } from 'cc';
 import { colA, dashedRoundRect, drawAnimal, drawArrowIcon, drawRock, newG } from './Draw2D';
@@ -103,7 +108,9 @@ export class AnimalNodeC {
         spNode.angle = -CSS_DEG[a.dir];
       }
     }
-    node.angle = Math.random() * 52 - 26; // 视觉倾斜（view 层随机）
+    // P1.5·阶段C2（2026-09-09）：±26° 随机倾斜已移除——散点时代是"自然感"，
+    //   紧密网格排列下就是"没对齐"（PRD 5.1 紧密排列要求）。节点 angle 恒 0。
+    node.angle = 0;
   }
 
   /** 同步位置与朝向（不动画）。sprite 模式下朝向变化 → 旋转 spNode（不换图，单图顶视角） */
@@ -156,18 +163,6 @@ export class AnimalNodeC {
       })
       .to(0.13, { position: back })                                // 弹回（过冲）
       .to(0.2, { position: b })                                    // 回到原位
-      .start();
-  }
-
-  /** 解锁弹跳（原型 unlockBounce：缩 .85 上浮 → 1.16 上冲 → 回位） */
-  bounceUnlock(): void {
-    Tween.stopAllByTarget(this.node);
-    const b = this.base;
-    this.node.setScale(0.85, 0.85, 1);
-    this.node.setPosition(b.x, b.y + 5, 0);
-    tween(this.node)
-      .to(0.18, { position: new Vec3(b.x, b.y + 10, 0), scale: new Vec3(1.16, 1.16, 1) }, { easing: 'quad-out' })
-      .to(0.32, { position: new Vec3(b.x, b.y, 0), scale: new Vec3(1, 1, 1) })
       .start();
   }
 

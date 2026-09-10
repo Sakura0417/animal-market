@@ -1,5 +1,22 @@
 /* 对局状态机（core 层核心，禁止 import 'cc'，可 Node 直跑）
- * 修改时间：2026-09-08 17:55 —— 修 0/0 显示 bug：makeOrder 偶数化升级为「优先减 q≥2 / 退化删 q=1 项」+ 防御层 delete items<1；ParkView.syncNeeds 加 need<=0 过滤；
+ * 修改时间：2026-09-10 21:41 —— 复活回血改走 REVIVE_HP 常量（hp = HP_MAX → 回 1 颗，用户需求）。
+ * 2026-09-10 19:17 —— 走廊遮挡语义配套：takeAnimal 移走动物后立即
+ *   2026-09-10 21:10 —— 朝向生成逻辑重构（Rush Hour 式构造式放置）：generate 改为 
+ *   "对局中出现动物路径相对、方向冲突"的根因）。
+ * 2026-09-10 09:28 —— 修"空车位无车"（用户截图 bug）：① makeOrder ≥2 硬约束
+ *   失败时不再直接 null——偏向采样锁死"avail=1 单种"时从全量 avail≥2 种类确定性降级重选
+ *   （保留 allIds 快照；全场每种都 ≤1 才是真供给不足 → null，终局合理形态）；
+ *   ② tryDispatch 单槽 makeOrder 失败由 return 改 continue（不再拖住后续车位）。
+ *   实测根因：开局 0.94%（L6，5000 局 47 次）空槽 + 空槽现场手动再调 makeOrder 必成功
+ *   ⇒ 纯"一次采样失败 + 无重试"，非供给不足。
+ *  2026-09-09 23:35 —— P1.5 紧密化（docs/grid-scheme-review-20260909.md 阶段 A）：
+ *   ① generate() 落位改 clusterLayout(cfg.tightness)——t=0 与旧 gridLayout 逐帧同构（开关法对拍
+ *     基点），t>0 团簇生长（猪了个猪式紧密排列，修复"均匀稀疏导致遮挡效力减半"的缺口）；
+ *   ② 朝向分配传 occupied + cfg.pressure——落实 PRD 5.1「高关卡反向偏置制造链条」（此前未实现）；
+ *   ③ 解锁保底升级：un<6 且 tightness>0 时先跑 repairUnlocks 确定性定向翻向（零 rng），
+ *     修复不成再重摇（tightness=0 保持旧纯重摇行为，保证对拍同构）；
+ *   ④ useShuffle 的 reflow 透传 tightness（洗牌分布与生成器一致，避免洗牌把紧密盘洗回稀疏盘）。
+ *  2026-09-08 17:55 —— 修 0/0 显示 bug：makeOrder 偶数化升级为「优先减 q≥2 / 退化删 q=1 项」+ 防御层 delete items<1；ParkView.syncNeeds 加 need<=0 过滤；
  *   2026-09-08 00:04 —— D8 调参轮：makeOrder 单种数量上限改概率闸门 ORDER_QTY3_P（恒2太松/恒3超调，p=0.4 入带）；
  *   2026-09-07 23:30 —— 需求 #2 强化：smartDir 后调用 breakAllHeadOnPairs 定点消除 2-环"对冲对"（hasBlockCycle 仅做兜底拒绝采样）；
  *  2026-09-07 16:30 —— P1 网格化（C1/B3/B4）：
@@ -10,9 +27,9 @@
  * 历次：2026-09-06 23:00 闪光倍率收编 + isFenceHopeless；21:10 复活上限；20:20 T1 调参；19:47 seed 化。 */
 import type { BestSale, LevelConfig, Match, Order, Phase, Rng, Slot, TakeOutcome } from './Types';
 import { Animal } from './Types';
-import { allLocked, blockerOf, breakAllHeadOnPairs, countFence, countUnlocked, gridLayout, hasBlockCycle, herdLeft, isBlocked, randDir, reflow, shuffle, smartDir, unlockedCountOf, unlockedSet } from './Board';
+import { allLocked, assignDirsNoHeadOn, blockerOf, clusterLayout, countFence, countUnlocked, hasBlockCycle, herdLeft, isBlocked, randDir, repairUnlocks, reflow, shuffle, unlockedCountOf, unlockedSet } from './Board';
 import { levelCfg } from './LevelCfg';
-import { CRANE_MAX, DEFAULT_SEED, FENCE_MAX, FLIP_MAX, HP_MAX, ORDER_QTY3_P, REVIVE_MAX, SHUF_MAX, SLOT_OPEN, SLOT_TOTAL, TYPE_MAP, TYPES } from './Constants';
+import { CRANE_MAX, DEFAULT_SEED, FENCE_MAX, FLIP_MAX, GRID_COLS, HP_MAX, ORDER_QTY3_P, REVIVE_HP, REVIVE_MAX, SHUF_MAX, SLOT_OPEN, SLOT_TOTAL, TYPE_MAP, TYPES } from './Constants';
 import { mulberry32 } from './Seed';
 
 export class GameSession {
@@ -84,11 +101,16 @@ export class GameSession {
 
   private generate(): void {
     const HERD_N = this.cfg.herdN, ROCK_N = this.cfg.rocks, TYPE_COUNT = this.cfg.typeCount;
-    let tries = 0, un;
+    let tries = 0, un = 0;
     do {
       this.herd = [];
-      // P1/B3 网格落位：60 格随机取 HERD_N+ROCK_N 个不重复格，前 HERD_N 给动物、其余给岩石
-      const cells = gridLayout(HERD_N + ROCK_N, this.rng);
+      // P1.5 紧密化（2026-09-09）：clusterLayout(tightness)——t=0 与旧 gridLayout 逐帧同构
+      //   （同一洗牌 deck 顺序取前 n），t>0 团簇生长（紧密排列）。落位后构建占用集，
+      //   供 smartDir 反向偏置查询"指向已占格"。
+      const cells = clusterLayout(HERD_N + ROCK_N, this.rng, this.cfg.tightness);
+      const occupied = new Set<number>();
+      for (const cell of cells) occupied.add(cell.row * GRID_COLS + cell.col);
+      // ① 位置先行（2026-09-10 21:10 重构）：先把全部动物/岩石落到格上，朝向留待统一分配
       for (let m = 0; m < HERD_N; m++) {
         const a = new Animal({
           uid: this.uidSeq++, type: TYPES[m % TYPE_COUNT], dir: 'up',
@@ -96,7 +118,6 @@ export class GameSession {
         });
         a.col = cells[m].col;
         a.row = cells[m].row;
-        a.dir = smartDir(a.col, a.row, this.rng);
         this.herd.push(a);
       }
       for (let r = 0; r < ROCK_N; r++) {
@@ -108,11 +129,20 @@ export class GameSession {
         rock.row = cells[HERD_N + r].row;
         this.herd.push(rock);
       }
-      // 2026-09-07 23:30 防御层：定点消除 2-环"对冲对"（A↔B 路径正面相对）。
-      // 先消除 2-环再做后续判定：hasBlockCycle 仍兜底 3/4+ 环，零石场景下 3+ 环极罕见但保留保险。
-      // 该步在 smartDir 之后、countUnlocked/hasBlockCycle 之前——避免 2-环先计入 un 拉低初始可动数。
-      breakAllHeadOnPairs(this.herd, this.rng);
+      // ② 构造式朝向分配（Rush Hour 式，用户需求"朝向生成时即固定、全程不改动"）：
+      //   逐只择向并即时避让"路径正对"（与已定朝向者互为第一占用者）——**一次定死、零翻转**。
+      //   取代旧三段式 smartDir → breakAllHeadOnPairs → breakAllHeadOnLines（后者的事后翻转
+      //   会让玩家在对局中看到"动物自己转头"，已被用户明确否决）。
+      //   返回 false = 某只 4 向皆冲突 ⇒ 该位置组合不可用，重摇布局（与挪车"放不下换位置"同构）。
+      if (!assignDirsNoHeadOn(this.herd, this.rng, occupied, this.cfg.pressure)) { tries++; continue; }
       un = countUnlocked(this.herd);
+      // P1.5（2026-09-09）：解锁保底——tightness>0（紧密盘面）时先做确定性定向翻向
+      //   （repairUnlocks 零 rng；候选方向恒为"走廊全空"，故不会引入正对）；翻不动再整体重摇。
+      //   属生成期行为，玩家看到的仍是"一次成型的最终盘面"。
+      if (un < 6 && this.cfg.tightness > 0) {
+        repairUnlocks(this.herd, 6);
+        un = countUnlocked(this.herd);
+      }
       tries++;
       // 互锁环拒绝采样（相邻遮挡下环仅 2/4 长度、出现率大降，保留作兜底；
       //   出现频率见 tools/test-cyclerate.ts，40 次上限兜底退化接受）。
@@ -183,6 +213,9 @@ export class GameSession {
 
     // === 正常模式（保留原概率分布，注入 rng） ===
     const openIds = ids.filter(id3 => unlockedCountOf(this.herd, id3) > 0);
+    // 全量种类快照（2026-09-10 空车位修复）：偏向采样收窄 ids 后，≥2 约束降级时仍需
+    // 回到全量重选——否则"偏向锁死在 avail=1 的单种"会误判供给不足（实测开局 0.94% 空槽根因）。
+    const allIds = ids.slice();
     if (openIds.length && this.rng() < 0.75) ids = openIds;
     const fenceCnt = countFence(this.fence);
     ids = ids.slice().sort(function (a, b) { return (fenceCnt[b] || 0) - (fenceCnt[a] || 0); });
@@ -209,8 +242,36 @@ export class GameSession {
         items[firstId] = 2;
         total = 2;
       } else {
-        // 凑不出 ≥2（极端边界：单种且只剩 1 只）→ 让 tryDispatch 不发新车
-        return null;
+        // 空车位修复（2026-09-10）：偏向采样把候选锁死在"avail=1 的单种"时，旧逻辑直接
+        // return null → tryDispatch 留空车位且无重试机制（实测开局 0.94%、截图 bug 根因）。
+        // 现确定性降级，两级：① 从**全量**种类里重选 avail≥2 的单种补足 2 只；
+        // ② 无单种 ≥2 时发"两种各 1"（PRD ≥2 只约束只限总数；清仓/放生破坏偶性不变量后
+        //    avail={A:1,B:1} 是真实可达场态，实测占持续空槽 0.9%）；
+        // 仅当全量可用总数 ≤1 才是真供给不足 → null（终局合理形态，等在途订单装车腾位后
+        // 由 tryDispatch 重试自愈）。
+        const byFence = function (a: string, b: string): number { return (fenceCnt[b] || 0) - (fenceCnt[a] || 0); };
+        const rich = allIds.filter(id5 => avail[id5] >= 2).sort(byFence);
+        if (rich.length) {
+          const pick = rich[Math.floor(this.rng() * rich.length)];
+          delete items[firstId];                 // 清 q=1 残项（items value ≥1 不变量，防 0/0 复发）
+          chosen.length = 0;
+          chosen.push(pick);
+          items[pick] = 2;
+        } else {
+          const ones = allIds.filter(id6 => avail[id6] >= 1).sort(byFence);
+          if (ones.length < 2) return null;      // 可用总数 ≤1 → 真供给不足
+          const p1 = ones[Math.floor(this.rng() * ones.length)];
+          let p2 = ones[Math.floor(this.rng() * ones.length)];
+          if (p2 === p1) p2 = ones.find(id7 => id7 !== p1)!;  // 确定性取异种类
+          delete items[firstId];
+          chosen.length = 0;
+          chosen.push(p1, p2);
+          items[p1] = 1;
+          items[p2] = 1;
+        }
+        total = 2;
+        value = 0;
+        for (const id in items) value += TYPE_MAP[id].price * (items[id] || 0);
       }
     }
 
@@ -270,7 +331,9 @@ export class GameSession {
       const s = this.slots[i];
       if (s.state !== 'empty') continue;
       const o = this.makeOrder();
-      if (!o) return;
+      // 空车位修复（2026-09-10）：`return` 改 `continue`——本槽暂无货可发时继续尝试
+      // 后续空槽，不再让"单槽采样失败"拖住全部车位（配合 makeOrder 降级与 view 自愈兜底）。
+      if (!o) continue;
       s.order = o;
       s.state = 'truck';
     }
@@ -356,6 +419,9 @@ export class GameSession {
     if (blocked && crane) {
       this.craneLeft--;
       this.herd.splice(this.herd.indexOf(a), 1);
+      // 2026-09-10 21:10（用户需求"朝向生成后全程不得改动"）：**不再**在移走动物后重校朝向。
+      //   旧实现在此处调用 breakAllHeadOnLines 翻转动物，导致玩家看到"动物自己转头"。
+      //   对局中因移走动物而新形成的"路径正对"是玩家操作的结果，由道具（吊车/翻转/洗牌）化解。
       this.fence.push(a);
       return { kind: 'crane', animal: a, fenceLen: this.fence.length };
     }
@@ -419,7 +485,8 @@ export class GameSession {
     s.order = null;
   }
 
-  /** 翻转道具（2026-09-06 19:09 改造：randDir 注入 rng） */
+  /** 翻转道具（2026-09-06 19:09 改造：randDir 注入 rng；2026-09-10 21:10：**移除翻转后的
+   *  自动修正**——道具本身就是"重摇朝向"的机制，其结果即最终状态；系统不再静默替玩家转动物） */
   useFlip(): boolean {
     if (this.flipLeft <= 0) return false;
     this.flipLeft--;
@@ -427,11 +494,14 @@ export class GameSession {
     return true;
   }
 
-  /** 洗牌道具（P1/B4，2026-09-07 16:30 改造：reflow 空格间重排，个体/朝向不变） */
+  /** 洗牌道具（P1/B4，2026-09-07 16:30 改造：reflow 空格间重排，个体/朝向不变；
+   *  P1.5 2026-09-09：透传 tightness——洗牌分布与生成器一致，避免把紧密盘洗回稀疏盘；
+   *  2026-09-10 21:10：**移除洗牌后的自动修正**——朝向保持不动是洗牌的既有语义，
+   *  重排后可能出现的"路径正对"由玩家用道具自行处理） */
   useShuffle(): boolean {
     if (this.shufLeft <= 0) return false;
     this.shufLeft--;
-    reflow(this.herd, this.rng);
+    reflow(this.herd, this.rng, this.cfg.tightness);
     return true;
   }
 
@@ -469,11 +539,13 @@ export class GameSession {
     return this.revivesUsed < REVIVE_MAX;
   }
 
-  /** 复活：回满 3 心原地续局（营收保留）。超 REVIVE_MAX 后调用无效（P5/C5 守卫）。 */
+  /** 复活：恢复 REVIVE_HP（=1）颗心原地续局（营收保留）。超 REVIVE_MAX 后调用无效（P5/C5 守卫）。
+   *  2026-09-10 21:41 用户需求：由 `hp = HP_MAX`（回满 3 心）改为只回 1 颗 —— 复活是"续一口气"，
+   *  不再是满血重开；HP_MAX 仅用于开局/重开的初始值，不再参与复活。 */
   revive(): boolean {
     if (!this.canRevive()) return false;
     this.revivesUsed++;
-    this.hp = HP_MAX;
+    this.hp = REVIVE_HP;
     return true;
   }
 

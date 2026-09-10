@@ -8,6 +8,19 @@ import type { Dir } from '../core/Types';
 export const OUT = '#5f4a3a';
 export const EYE = '#3d2f23';
 
+/**
+ * 矩形圆角 token（设计单位，2026-09-10 统一）——全工程唯一的圆角出处。
+ * 此前散落 5/10/11/12/14/18 六种裸数字，无从横向比较；按元素体量归四档。
+ * 胶囊（关卡木牌 / HUD 币价胶囊 / 按钮 note 行）不在此表：圆角恒为 h/2，写 h/2 即自解释。
+ * Ui.ts 转出本表（定义放这里是为了避免 Ui↔Draw2D 循环依赖）。
+ */
+export const RADIUS = {
+  panel: 16,   // 大面板 / 停车带 / 牧场围栏（边长 ≥80）
+  card: 12,    // 卡片 / 面板主按钮 / 道具按钮
+  chip: 10,    // 停车位槽 / toast / 小徽章
+  micro: 6,    // 微型容器（≤20 边长的内嵌小盒）
+} as const;
+
 const cache: Record<string, Color> = {};
 export function col(hex: string): Color {
   let c = cache[hex];
@@ -43,6 +56,47 @@ export function makeLabel(text: string, fontSize: number, hex: string, bold = tr
   label.horizontalAlign = Label.HorizontalAlign.CENTER;
   label.verticalAlign = Label.VerticalAlign.CENTER;
   return { node, label };
+}
+
+/** 文案宽度粗估（CJK 按 1em、其余按 0.58em）——与 Toast.show 的估算口径一致。
+ *  用途：把多个 Label 居中拼成一行时算整行宽度。
+ *  为什么不实测：Label 的 UITransform 要等**渲染帧**才按内容更新，构建期读到的是 0
+ *  （Overflow.NONE + enableWrapText=false 亦是如此），所以构建期只能用估算。
+ *  口径依据：系统字体下 CJK 字形的 advance 恰为 1em；ASCII 取 0.58em 的常用均值。 */
+export function estTextW(text: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of text) w += ch.charCodeAt(0) > 0x2e80 ? fontSize : fontSize * 0.58;
+  return w;
+}
+
+const isCJK = (ch: string): boolean => ch.charCodeAt(0) > 0x2e80;
+/** 行首禁则：这些收尾标点不得单独出现在行首（跟随上一行，宁可轻微超宽） */
+const NO_LINE_START = '！？。，、；：）】》」』…·%,.;:)]}';
+
+/**
+ * 按估算宽度把文案断成多行（2026-09-10）。
+ * 为什么需要：Cocos Label 默认 Overflow.NONE 会**忽略 contentSize 按原文宽度渲染**——
+ * 既不会帮你换行，也不会裁剪，超宽文案会直接冲出容器（Toast / 面板副文案都踩过）。
+ * 取「构建期手动断行 + enableWrapText=false」：行数由我们掌控，背景尺寸与文案必然一致。
+ * 断行规则：CJK 逐字断；非 CJK 优先在最近的空格断；行首禁则字符不另起行。
+ */
+export function wrapTextByWidth(text: string, maxW: number, fontSize: number): string[] {
+  const out: string[] = [];
+  for (const para of text.split('\n')) {
+    let cur = '';
+    for (const ch of para) {
+      if (cur !== '' && estTextW(cur + ch, fontSize) > maxW && !NO_LINE_START.includes(ch)) {
+        if (!isCJK(ch)) {
+          const k = cur.lastIndexOf(' ');
+          if (k > 0) { out.push(cur.slice(0, k)); cur = cur.slice(k + 1); }
+          else { out.push(cur); cur = ''; }
+        } else { out.push(cur); cur = ''; }
+      }
+      cur += ch;
+    }
+    out.push(cur);
+  }
+  return out.length ? out : [''];
 }
 
 /* ---------- 基础形状 ---------- */
@@ -384,12 +438,6 @@ export function drawShuffleIcon(g: Graphics): void {
   head(18, 14);
 }
 
-export function drawPauseIcon(g: Graphics): void {
-  const S = 64 / 24;
-  rrAt(g, 6 * S, 4 * S, 4 * S, 16 * S, 1 * S, '#5a6a78');
-  rrAt(g, 14 * S, 4 * S, 4 * S, 16 * S, 1 * S, '#5a6a78');
-}
-
 export function drawRestartIcon(g: Graphics): void {
   const S = 64 / 24;
   const r = 9 * S;
@@ -473,7 +521,7 @@ export const SLOT_COLORS: [string, string][] = [
 
 /** 按钮底板（d-btn：渐变近似为双色上浅下深两段） */
 export function drawBtn(g: Graphics, w: number, h: number, kind: 'primary' | 'blue' | 'green' | 'ghost'): void {
-  const rr = 11;
+  const rr = RADIUS.card;
   if (kind === 'ghost') {
     g.roundRect(-w / 2, -h / 2, w, h, rr);
     g.fillColor = colA('#ffffff', 235);
@@ -500,13 +548,13 @@ export function drawBtn(g: Graphics, w: number, h: number, kind: 'primary' | 'bl
 
 /** 紫色道具按钮底板（d-tool） */
 export function drawToolBtn(g: Graphics, w: number, h: number): void {
-  g.roundRect(-w / 2, -h / 2, w, h - 3, 12);
+  g.roundRect(-w / 2, -h / 2, w, h - 3, RADIUS.card);
   g.fillColor = col('#9d7df5');
   g.fill();
-  g.roundRect(-w / 2, -h / 2 + 2.5, w, h - 3, 12);
+  g.roundRect(-w / 2, -h / 2 + 2.5, w, h - 3, RADIUS.card);
   g.fillColor = col('#b9a0fb');
   g.fill();
-  g.roundRect(-w / 2, -h / 2, w, h - 3, 12);
+  g.roundRect(-w / 2, -h / 2, w, h - 3, RADIUS.card);
   g.strokeColor = col('#7c5cc4');
   g.lineWidth = 2;
   g.stroke();

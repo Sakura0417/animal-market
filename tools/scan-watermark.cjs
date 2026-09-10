@@ -1,7 +1,7 @@
 /* 水印扫描器：检测源图右下角 512×512 区域的暗像素（判定"豆包AI生成"等水印是否存在）
  * 修改时间：2026-09-08（由原 _scan-watermark.cjs 升级：源目录改为命令行参数，适配任意批次）
  * 用法：node tools/scan-watermark.cjs <目录> <文件名.png> [...]
- *   例：node tools/scan-watermark.cjs assets/animal chicken.png cow.png
+ *   例：node tools/scan-watermark.cjs ../raw-art/animals-2048-src chicken.png cow.png
  * 输出：darkPx@RB512 = 右下角暗像素数；>0 即存在水印（含 bbox），=0 即无水印
  * 说明：零依赖（zlib 内置），复用 tools/png-probe.cjs 的 PNG 解码思路 */
 const {readFileSync} = require('node:fs');
