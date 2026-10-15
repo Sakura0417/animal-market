@@ -1,8 +1,10 @@
 /* 存档服务（SERVICES）：关卡进度 / 金币钱包 / 上局结算 / 每关最佳星级。
  * 键名与原型 localStorage 一致（am_level / am_wallet / am_last_result），便于迁移对拍；
  * am_stars 为 2026-09-06 21:10 新增（P5/C3：星级按剩余生命结算，顺手存档供后续关卡列表消费）。
- * 修改时间：2026-09-06 21:10 —— ① LastResult 增 stars 字段；② 新增 saveBestStar/loadStars。 */
+ * 修改时间：2026-09-24 19:36 —— 进度/星级三处关卡上限硬编码 30 改走 Constants.MAX_LEVEL（支持 60 关）。
+ * 2026-09-06 21:10 —— ① LastResult 增 stars 字段；② 新增 saveBestStar/loadStars。 */
 import { sys } from 'cc';
+import { MAX_LEVEL } from '../core/Constants';
 
 const K_LEVEL = 'am_level';
 const K_WALLET = 'am_wallet';
@@ -33,12 +35,12 @@ function readInt(key: string, def: number): number {
 export const SaveService = {
   loadLevel(): number {
     const v = readInt(K_LEVEL, 1);
-    return Math.min(30, Math.max(1, v || 1));
+    return Math.min(MAX_LEVEL, Math.max(1, v || 1));
   },
   saveLevelProgress(passedLevel: number): void {
     try {
       const max = readInt(K_LEVEL, 1);
-      if (passedLevel + 1 > max) sys.localStorage.setItem(K_LEVEL, String(Math.min(30, passedLevel + 1)));
+      if (passedLevel + 1 > max) sys.localStorage.setItem(K_LEVEL, String(Math.min(MAX_LEVEL, passedLevel + 1)));
     } catch (e) { /* 隐私模式等场景忽略 */ }
   },
   loadWallet(): number {
@@ -66,7 +68,7 @@ export const SaveService = {
     if (stars < 1 || stars > 3) return;
     try {
       const all = this.loadStars();
-      const key = String(Math.max(1, Math.min(30, level | 0)));
+      const key = String(Math.max(1, Math.min(MAX_LEVEL, level | 0)));
       if ((all[key] || 0) >= stars) return;
       all[key] = stars;
       sys.localStorage.setItem(K_STARS, JSON.stringify(all));

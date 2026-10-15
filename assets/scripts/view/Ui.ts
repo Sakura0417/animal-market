@@ -4,7 +4,7 @@
  * 容器纪律：容器节点锚点(0,1)=左上；子节点 place(l,t) → position(l,-t)，
  * Graphics 画底板用 roundRect(0,-h,w,h,r)（左上角为局部原点）。 */
 import { EventTouch, Graphics, Node, Tween, tween, UITransform, UIOpacity } from 'cc';
-import { col, drawBtn, estTextW, makeLabel, newG, RADIUS, wrapTextByWidth } from './Draw2D';
+import { col, drawBtn, estTextW, LABEL_HIRES, makeLabel, newG, RADIUS, wrapTextByWidth } from './Draw2D';
 
 export interface Pt { x: number; y: number; }
 
@@ -153,14 +153,16 @@ export class Toast {
   private static readonly MARGIN = 14;    // 距屏幕左右边缘的安全留白
   private static readonly BOTTOM = 86;    // 底边距屏幕底部（恒高于底部道具栏 66）
 
-  constructor(parent: Node, w: number, screenH: number) {
+  constructor(parent: Node, w: number, screenH: number, bottomIn = 0) {
     this.W = w;
     const { node } = newG('toast', 10, 34);
     this.node = node;
     opacityOf(node).opacity = 0;
     const ut = node.getComponent(UITransform)!;
     ut.setAnchorPoint(0.5, 0);                                 // 底边固定，向上生长
-    node.setPosition(0, -screenH / 2 + Toast.BOTTOM, 0);       // x=0：design 空间水平居中
+    // 底边距 = BOTTOM + bottomIn（系统 Home 条安全区，道具栏上移后 toast 同步抬升，
+    // 始终悬于道具栏上方；无安全区设备 bottomIn=0 与旧布局一致）
+    node.setPosition(0, -screenH / 2 + Toast.BOTTOM + bottomIn, 0);  // x=0：design 空间水平居中
     parent.addChild(node);
   }
 
@@ -180,7 +182,7 @@ export class Toast {
     this.node.addChild(g.node);
 
     const t = makeLabel(lines.join('\n'), Toast.FS, '#ffffff', false);
-    t.label.lineHeight = Toast.LH;
+    t.label.lineHeight = Toast.LH * LABEL_HIRES;   // 2026-09-24：×LABEL_HIRES（node scale 1/2 后视觉行距不变）
     t.label.enableWrapText = false;         // 已手动断行 → 禁止引擎再折，行数/背景高必然一致
     placeC(t.node, 0, bgH / 2, bgW, bgH);
     this.node.addChild(t.node);

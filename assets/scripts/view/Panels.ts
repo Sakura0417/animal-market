@@ -1,9 +1,33 @@
-/* Panels（VIEW）：模态面板系统 —— 挤爆/生命耗尽/滞销/通关/开局须知 + Mock 广告层。
+/* Panels（VIEW）：模态面板系统 —— 挤爆/撞晕/滞销/通关/开局须知 + Mock 广告层。
  * （暂停面板 pause 已随 HUD 暂停钮移除，2026-09-10）
  * 结构：modal（全屏暗遮罩 + 吞触摸）→ panelHost（锚点0.5,1 从中心向下生长，
  * 布局完成后 y = h/2 回到垂直居中）→ 内容游标自上而下堆叠。
- * 通关面板带 win-pop 弹性弹出（原型 cubic-bezier(.3,1.5,.5,1) ≈ back-out）。
- * 修改时间：2026-09-10 21:41 —— ① failFence 由 4 项砍为 2 项（吊车放生 3 只·看广告 / 重开），
+ * 通关面板带 win-pop 弹性弹出（原型 cubic-bezier(.3,1.5,.5,1) ≈ backOut）。
+ * 修改时间：2026-10-08 11:45 —— UI 审查 **H2（实为运行时 BUG）**：缓动名 `'back-out'` → `'backOut'` ×3。
+ *   🔴 根因（读 build 产物 `cocos-js/_virtual_cc-*.js` 实证）：引擎 `TweenEasingAdapter` 只在
+ *   **首字符为大写** 时才做归一化（`if (/[A-Z]/.test(initialChar))`）。`'back-out'` 首字符是小写 `b`
+ *   ⇒ 整个归一化分支被跳过、原样返回 ⇒ 随后 `easing['back-out']` 取到 undefined ⇒ 走 warnID 分支，
+ *   而 `opts.easing` 为 undefined 时 `update()` 里 `easingTime = t` **退化为线性**。
+ *   即：这 3 处面板弹性入场（win-pop / 常规弹窗 / 标题 pop）**从未生效过**，且只有一条
+ *   开发者警告（真机微信环境不显示）——所以一直没被发现。
+ *   合法写法只有驼峰：'backOut' / 'quadIn' / 'sineOut' / 'sineInOut'（见 TweenEasing 类型）。
+ * 修改时间：2026-10-08 11:45 —— UI 审查 M5：删除文件末尾死代码 `h2()`（恒等函数、零引用，
+ *   是某次重构未清理的残留）。纯清理，行为零变化。
+ * 修改时间：2026-09-27 00:00 —— 开局须知**恢复原文案**（"扣 1 颗生命 / 共 3 颗扣完失败 /
+ *   吊车吊走不扣生命"，用户确认保留）；failHp 面板保持 23:48 新文案（撞得晕头转向 / 原地续局）。
+ * 2026-09-26 23:48 —— 玩家可见文案取消"生命/扣心"表述：开局须知
+ *   "扣 1 颗生命（共 3 颗，扣完失败）"删行为"被弹回原地"；failHp 标题"生命值耗尽！"
+ *   →"撞得晕头转向！"、复活钮"生命恢复 1 颗"→"原地续局"、"复活次数"→"续局次数"。
+ * 2026-09-26 22:41 —— 模态遮罩加深（方案 E）：#465668 alpha 140 → 170，
+ *   增强面板与背景的层次（真机强光下 140 的对比不足）。
+ *   2026-09-24 13:30 —— 通关面板星级行由 ★/☆ **字符**改为 `Draw2D.drawStar` 矢量五星：
+ *   接入 ZCOOL KuaiLe 子集字体后该字体无 ★☆ 字形，字符星会渲染成方块。
+ *   2026-09-19（二次）—— 广告元素全部接入 `AD_ENABLED` 总开关：关闭时按钮标题去掉
+ *   " · 看广告"后缀（adSuffix）、开局须知改"点击解锁"、演示广告层直接短路不显示。
+ *   2026-09-19 —— ① 广告演示层回调改 `done(watched)`（看完 / 跳过决定发不发奖），
+ *   并加「跳过（不发奖）」钮用于自测兜底链路；② 新增 tipDanger（面板内提示行）——
+ *   广告未成交的反馈不能用 Toast（覆盖层 z 序 toast → 面板 → 特效，会被模态遮罩压住）。
+ *   2026-09-10 21:41 —— ① failFence 由 4 项砍为 2 项（吊车放生 3 只·看广告 / 重开），
  *   去掉"清仓大甩卖"与"发好友求救"（用户需求：失败转化位只留广告 + 重开两条出路）；
  *   ② failHp 复活文案"回满 3 颗"→"回 1 颗"（core REVIVE_HP=1 配套）。
  * 2026-09-08 —— 通关面板售出统计动物图标改统一 animalIcon（矢量占位+sprite 切换）；
@@ -11,10 +35,12 @@
  *   超限不渲染复活广告按钮）；② win 增 stars 参数渲染星级行（C3 星级按剩余生命结算）。
  *   00:36 —— 修复 begin() wipeChildren 误毁持久面板底板的渲染 bug（详见 begin 内注释）。 */
 import { Label, Node, Tween, tween, UIOpacity, UITransform, Vec3 } from 'cc';
-import { col, colA, drawCoin, makeLabel, newG, wrapTextByWidth } from './Draw2D';
+import { col, colA, drawCoin, drawStar, makeLabel, newG, wrapTextByWidth } from './Draw2D';
 import { animalIcon } from './AnimalArt';
 import { ICON_PX, iconArt } from './IconArt';
 import { mkBtn, place, placeC, swallow, wipeChildren } from './Ui';
+import { AD_ENABLED } from '../platform/AdConfig';   // 广告总开关：关闭时文案去掉"看广告"、演示层不显示
+import { adSuffix } from '../services/AdPoints';     // 按钮标题的广告后缀（开关关闭时为空串）
 
 export interface PanelBtn {
   kind: 'primary' | 'blue' | 'green' | 'ghost';
@@ -38,7 +64,10 @@ export class Panels {
     // 模态遮罩
     const { node, g } = newG('modal', w, h);
     g.rect(-w / 2, -h / 2, w, h);
-    g.fillColor = colA('#465668', 140);
+    // 遮罩加深（2026-09-26 22:41，方案 E）：alpha 140 → 170。140 时底下的牧场/车位仍清晰可辨，
+    //   面板"跳出"的层次感弱（尤其中午强光下真机对比度低）；170 让焦点稳定落在面板上，
+    //   同时保留背景轮廓不丢空间感（仍非纯黑全遮）。
+    g.fillColor = colA('#465668', 170);
     g.fill();
     node.active = false;
     swallow(node);
@@ -69,8 +98,14 @@ export class Panels {
     this.node.active = false;
   }
 
-  /** 广告演示层：3 秒倒计时（DevAdapter 注入的 display） */
-  ad(onDone: () => void): void {
+  /** 广告演示层：3 秒倒计时（DevAdapter 注入的 display）。
+   *  2026-09-19 改造：回调由 `onDone()` 改为 `done(watched)` —— 接入真实广告后
+   *  "看没看完"决定发不发奖，演示层必须能模拟两种终局，否则失败分支无法自测；
+   *  另加「跳过」钮，用来在 dev 环境验证 skipped 兜底链路（不发奖 + 面板提示）。 */
+  ad(done: (watched: boolean) => void): void {
+    // 开关关闭时不应存在演示广告层（AdService 也不会调到这里）——双保险：直接按"看完"返回，
+    //   且**绝不激活 adNode**，否则会闪出广告层，违反"页面不显示任何广告元素"。
+    if (!AD_ENABLED) { done(true); return; }
     if (this.adT !== null) { clearTimeout(this.adT); this.adT = null; }
     this.adNode.active = true;
     wipeChildren(this.adNode);
@@ -83,17 +118,20 @@ export class Panels {
     const note = makeLabel('广告播放中（演示）…', 12, '#8b95a3', false);
     placeC(note.node, 0, -48, 220, 16);
     this.adNode.addChild(note.node);
+    const finish = (watched: boolean): void => {
+      if (this.adT !== null) { clearTimeout(this.adT); this.adT = null; }
+      this.adNode.active = false;
+      done(watched);
+    };
+    const skip = mkBtn({ w: 148, kind: 'ghost', title: '跳过（不发奖）', onTap: () => finish(false) });
+    placeC(skip, 0, -104, 148, 40);
+    this.adNode.addChild(skip);
     let n = 3;
-    const tick = () => {
+    const tick = (): void => {
       n--;
-      if (n <= 0) {
-        this.adT = null;
-        this.adNode.active = false;
-        onDone();
-      } else {
-        count.label.string = String(n); // 修复（2026-09-06 01:20:00）：makeLabel 包装对象需写 .label.string
-        this.adT = setTimeout(tick, 1000);
-      }
+      if (n <= 0) { finish(true); return; }   // 倒计时归零 = 完整观看
+      count.label.string = String(n); // 修复（2026-09-06 01:20:00）：makeLabel 包装对象需写 .label.string
+      this.adT = setTimeout(tick, 1000);
     };
     this.adT = setTimeout(tick, 1000);
   }
@@ -101,6 +139,26 @@ export class Panels {
   adCancel(): void {
     if (this.adT !== null) { clearTimeout(this.adT); this.adT = null; }
     this.adNode.active = false;
+  }
+
+  /** 面板内提示行（2026-09-19 新增）：广告未成交等"面板已弹出"场景的反馈。
+   *  为什么不用 Toast：覆盖层 z 序是 toast → 面板 → 特效（见 GameView.buildLayout），
+   *  面板打开时 Toast 会被模态遮罩压住 ⇒ 玩家看不到任何失败反馈，只会觉得"点了没反应"。
+   *  本方法在当前面板底部追加一行红字，并把底板按新高度重画（面板略微长高）。 */
+  tipDanger(text: string): void {
+    if (!this.node.active) return;
+    const MAX_W = PW / 2 - 16 - SUB_X;
+    for (const row of wrapTextByWidth(text, MAX_W, 12.5)) {
+      const t = makeLabel(row, 12.5, '#d94b3d', false);
+      t.label.horizontalAlign = Label.HorizontalAlign.LEFT;
+      t.label.enableWrapText = false;
+      t.node.getComponent(UITransform)!.setAnchorPoint(0, 1);
+      t.node.setPosition(SUB_X, -this.cursor, 0);
+      this.host.addChild(t.node);
+      this.cursor += 19;
+    }
+    this.cursor += 6;
+    this.end();
   }
 
   /* ---------- 布局游标 ---------- */
@@ -116,11 +174,11 @@ export class Panels {
     if (winPop) {
       this.host.setScale(0.6, 0.6, 1);
       this.host.setPosition(0, 0, 0);
-      tween(this.host).to(0.5, { scale: new Vec3(1, 1, 1) }, { easing: 'back-out' }).start();
+      tween(this.host).to(0.5, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
     } else {
       this.host.setScale(0.92, 0.92, 1);
       this.host.setPosition(0, 0, 0);
-      tween(this.host).to(0.28, { scale: new Vec3(1, 1, 1) }, { easing: 'back-out' }).start();
+      tween(this.host).to(0.28, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
     }
   }
 
@@ -144,7 +202,7 @@ export class Panels {
     this.host.addChild(t.node);
     if (pop) {
       t.node.setScale(0.3, 0.3, 1);
-      tween(t.node).delay(0.18).to(0.57, { scale: new Vec3(1, 1, 1) }, { easing: 'back-out' }).start();
+      tween(t.node).delay(0.18).to(0.57, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
     }
     this.cursor += 24 + 8;
   }
@@ -193,7 +251,7 @@ export class Panels {
       '2. 上方停车位里的卡车各收不同动物，',
       '   围栏凑齐订单就自动装车收钱',
       '3. 围栏只有 7 格，装不下会挤爆；',
-      '   后两个车位可看广告解锁',
+      AD_ENABLED ? '   后两个车位可看广告解锁' : '   后两个车位可点击解锁',
       '4. 把牧场和围栏的动物全部卖空即通关',
       '   被挡的宝贝用吊车吊走不扣生命',
     ]);
@@ -208,21 +266,21 @@ export class Panels {
     this.begin();
     this.title('围栏挤爆了！');
     this.sub(['7 格围栏已满，且当前订单无法完成。']);
-    this.btn({ kind: 'blue', title: '吊车放生 3 只 · 看广告', note: '返还基础价 50% 金币 · 继续本局', onTap: onRelease });
+    this.btn({ kind: 'blue', title: '吊车放生 3 只' + adSuffix(), note: '返还基础价 50% 金币 · 继续本局', onTap: onRelease });
     this.btn({ kind: 'ghost', title: '放弃重开（免费）', onTap: onRestart });
     this.end();
   }
 
   failHp(left: number, canRevive: boolean, onRevive: () => void, onRestart: () => void): void {
     this.begin();
-    this.title('生命值耗尽！');
+    this.title('撞得晕头转向！');
     this.sub(['小动物们撞来撞去，牧场围栏被撞坏了', '牧场还剩 ' + left + ' 只没卖掉']);
     // C5（2026-09-06 21:10）：本局复活次数用尽（REVIVE_MAX）后不提供广告复活位
     if (canRevive) {
       // 2026-09-10 21:41：回血数由 3 改 1（core REVIVE_HP 配套，文案不得再写死数字）
-      this.btn({ kind: 'blue', title: '生命恢复 1 颗 · 看广告', note: '原地继续本局 · 已卖营收保留', onTap: onRevive });
+      this.btn({ kind: 'blue', title: '原地续局' + adSuffix(), note: '原地继续本局 · 已卖营收保留', onTap: onRevive });
     } else {
-      this.sub(['今日复活次数已用完，试试重开一局吧']);
+      this.sub(['今日续局次数已用完，试试重开一局吧']);
     }
     this.btn({ kind: 'ghost', title: '放弃重开（免费）', onTap: onRestart });
     this.end();
@@ -246,11 +304,15 @@ export class Panels {
     this.title('牧场清空 · 收市！', true);
     this.sub(['第' + o.level + '关通过 · 售出 ' + o.ordersDone + ' 车 · 牧场动物全部卖光']);
     // 星级行（C3，2026-09-06 21:10）：按剩余生命结算，复活过封顶 1 星（GameView 计算）
+    // 2026-09-22 改矢量星：ZCOOL KuaiLe 子集字体无 ★/☆ 字形，字符星在自定义字体下会变方块
     const starRow = new Node('stars');
     placeC(starRow, 0, -(this.cursor + 14), PW - 40, 28);
     this.host.addChild(starRow);
     for (let k = 0; k < 3; k++) {
-      const st = makeLabel(k < o.stars ? '★' : '☆', 24, k < o.stars ? '#f5b301' : '#dfe6ec', false);
+      const st = newG('star' + k, 24, 24);
+      // 满星 = 金黄填充+深金描边；空星 = 仅浅灰描边（替代 ☆）
+      if (k < o.stars) drawStar(st.g, 10.5, '#f5b301', '#d99500', 1.4);
+      else drawStar(st.g, 10.5, '#d8dfe6', '#c3ccd4', 1.8);
       placeC(st.node, (k - 1) * 34, 0, 34, 28);
       starRow.addChild(st.node);
     }
@@ -292,7 +354,7 @@ export class Panels {
       this.host.addChild(t.node);
       this.cursor += 18 + 8;
     } else {
-      this.btn({ kind: 'blue', title: '双倍营收 · 看广告', onTap: o.onDouble });
+      this.btn({ kind: 'blue', title: '双倍营收' + adSuffix(), onTap: o.onDouble });
     }
     this.btn({
       kind: 'green',
@@ -302,9 +364,4 @@ export class Panels {
     this.btn({ kind: 'ghost', title: '再玩本关', onTap: o.onRestart });
     this.end();
   }
-}
-
-/** 屏幕中心偏移辅助：h2(x) = 面向 placeC 的 y 坐标（ad 层用，居中向上排） */
-function h2(y: number): number {
-  return y;
 }

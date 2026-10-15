@@ -1,4 +1,9 @@
 /* BalanceSim：难度曲线回归模拟器（P2）· 复用 core 层 GameSession，策略与原型 _sim-trace.js 逐行对齐
+ * 修改时间：2026-09-26 23:30 —— faillock 分支前接入 core.tryAutoReshuf()（自动挪窝 B 档兜底，
+ *   三道具用尽 + 全场互锁免费重排一次），模拟器与 view/reconcile 语义对齐，可量化该功能对难度的影响。
+ * 2026-09-24 19:36 —— ① typeCount 专用覆盖钩子泛化为 setCfgOverride（可覆盖任意
+ *   LevelConfig 字段，供 L13-60 扩展段扫面定值；旧 setTypeCountOverride 保留为薄包装）；
+ *   ② curveScan 支持区间扫描 curveScan(games, from, to)，原先硬编码 L1-12。
  * 随机流对齐要点（种子对拍零失真的前提）：
  *   1) core 移植时把视觉随机量（rot 倾斜）剥离到 view 层，随机调用序列与 _sim-trace.js 完全一致
  *   2) 机器人直接操作 session.herd/fence（与 _sim-trace.js 一致），救援计数用 session 自带计数器
@@ -14,11 +19,16 @@ import { GameSession } from '../../assets/scripts/core/GameSession';
 import { levelCfg } from '../../assets/scripts/core/LevelCfg';
 import { FENCE_MAX, SLOT_TOTAL } from '../../assets/scripts/core/Constants';
 
-/** typeCount 覆盖钩子（2026-09-06 23:41 新增，typecount_scan 扫描专用，null = 默认 levelCfg 值）。
- *  注入点在 runBot 的 S.start 之后：改写 cfg.typeCount 后重新 generate+tryDispatch。
- *  仅影响本模拟器会话，不触碰 core 与快照对拍基准。 */
-let typeCountOverride: number | null = null;
-export function setTypeCountOverride(v: number | null): void { typeCountOverride = v; }
+/** cfg 覆盖钩子（2026-09-24 泛化，原 `setTypeCountOverride` 只能覆盖 typeCount）：
+ *  扫描专用，null = 默认 levelCfg 值。注入点在 runBot 的 S.start 之后：合并覆盖字段后
+ *  重新 generate+tryDispatch。仅影响本模拟器会话，不触碰 core 与快照对拍基准。
+ *  只在覆盖值确实与原值不同时才重生成——保证"覆盖等于原值"时与未覆盖逐帧一致。 */
+let cfgOverride: Partial<LevelConfig> | null = null;
+export function setCfgOverride(v: Partial<LevelConfig> | null): void { cfgOverride = v; }
+/** 兼容旧调用（typecount_scan.ts）：等价于 setCfgOverride({ typeCount }) / setCfgOverride(null)。 */
+export function setTypeCountOverride(v: number | null): void {
+  setCfgOverride(v === null ? null : { typeCount: v });
+}
 
 export interface BotResult {
   phase: string;
@@ -108,12 +118,22 @@ function reconcileSync(): void {
  * recover=false：一审（不用任何广告救援），测真实难度 */
 function runBot(recover: boolean): BotResult {
   S.start(S.level);
-  /* typeCount 覆盖（扫描专用）：改写 cfg 后重新生成盘面（generate 私有，运行时 strip-types 可达） */
-  if (typeCountOverride !== null && typeCountOverride !== S.cfg.typeCount) {
-    const sc = S as unknown as { cfg: LevelConfig; generate(): void };
-    sc.cfg = { ...S.cfg, typeCount: typeCountOverride };
-    sc.generate();
-    S.tryDispatch();
+  /* cfg 覆盖（扫描专用）：合并覆盖字段后重新生成盘面（generate 私有，运行时 strip-types 可达）。
+   * 只在确有字段变化时重生成——"覆盖值 == 原值"时保持与未覆盖路径逐帧一致。 */
+  if (cfgOverride !== null) {
+    const next = { ...S.cfg, ...cfgOverride } as LevelConfig;
+    const nextRaw = next as unknown as Record<string, unknown>;
+    const curRaw = S.cfg as unknown as Record<string, unknown>;
+    let differs = false;
+    for (const k in cfgOverride) {
+      if (nextRaw[k] !== curRaw[k]) { differs = true; break; }
+    }
+    if (differs) {
+      const sc = S as unknown as { cfg: LevelConfig; generate(): void };
+      sc.cfg = next;
+      sc.generate();
+      S.tryDispatch();
+    }
   }
   let steps = 0, bonks = 0, cranes = 0, revives = 0;
   let guard = 0;
@@ -173,6 +193,9 @@ function runBot(recover: boolean): BotResult {
         continue;
       }
       if (recover) { S.craneLeft = 1; revives++; continue; } /* 广告送吊车 */
+      /* B 档自动挪窝兜底（2026-09-26，与 view/reconcile 同语义）：三道具用尽 + 全场互锁 →
+       * 免费重排一次（AUTO_RESHUF_MAX/局），替代 faillock 判负。判负前先给一次续命机会。 */
+      if (S.tryAutoReshuf()) { continue; }
       return { phase: 'faillock', steps: steps, bonks: bonks, cranes: cranes, revives: revives, coins: S.coins };
     }
 
@@ -215,11 +238,11 @@ export function simulateLevel(n: number, games: number): LevelReport {
   return { line: line, rawWin: rawWin, win: win, games: games, rawStuck: rawStuck, stuck: stuck, end: end + rawEnd };
 }
 
-export function curveScan(games = 400): void {
-  console.log('=== 动物集市 V4.1（碰撞弹回+清空通关）· core 层关卡难度曲线 · L1-L12 · 各 ' + games + ' 局（贪心机器人） ===');
-  console.log('目标：L1-2 教学保过(一审≥95%) · L3-5 爬升 · L6+ 靠广告续命(恢复后≥95%) · 全程无卡死');
+export function curveScan(games = 400, from = 1, to = 12): void {
+  console.log('=== 动物集市 V4.1（碰撞弹回+清空通关）· core 层关卡难度曲线 · L' + from + '-L' + to + ' · 各 ' + games + ' 局（贪心机器人） ===');
+  console.log('目标（2026-09-24 22:52 全曲线重标定后）：L1-3 约 90% · L4-5 约 80% · L6-12 约 58% · L13-40 约 50% · L41-60 约 46% · 恢复后≥95% · 全程无卡死');
   let bad = 0;
-  for (let n = 1; n <= 12; n++) {
+  for (let n = from; n <= to; n++) {
     const r = simulateLevel(n, games);
     console.log(r.line);
     bad += r.stuck + (r.rawStuck || 0);

@@ -1,7 +1,10 @@
 /* HudView（VIEW）：顶部 HUD —— 重开图标钮 + 木质关卡牌 + 生命值（心碎动画）
- * + 剩余进度胶囊 + 金币胶囊（飞币入账落点）。
+ * + 金币胶囊（飞币入账落点）。
  * 心形仅在 hp 变化时重建（renderHUD 高频调用，避免无谓 Graphics 重绘）。
- * 修改时间：2026-09-10 19:55 —— 视觉规范统一：① 图标钮 29×29 → **视觉 25×25 圆形 + 命中区 30×30**
+ * 修改时间：2026-09-24 13:30 —— ① 移除「剩 N 只」进度胶囊（用户要求，字段/常量/构建块/render
+ *   赋值一并清退，render 签名去掉 left 参数）；② 布局由「等距均分」改**固定间隙左对齐**：均分
+ *   会把金币胶囊推到右界、与微信系统胶囊抢碰触区，现右侧固定留白（间隙 8）。
+ *   2026-09-10 19:55 —— 视觉规范统一：① 图标钮 29×29 → **视觉 25×25 圆形 + 命中区 30×30**
  *   （与同排 25 高胶囊齐平）；② HUD 改**流式等距布局**（暂停钮移除后左侧曾空出 34px）；
  *   ③ 全排尺寸走 ICON_PX token，心形满/空两态光学高度对齐（原先灰心比红心小 60%）；
  *   ④ 按下反馈接入统一 PRESS_SCALE。
@@ -30,7 +33,6 @@ export class HudView {
   readonly node: Node;
   private hpHost: Node;
   private hearts: Node[] = [];
-  private progLabel: ReturnType<typeof makeLabel>;
   private coinLabel: ReturnType<typeof makeLabel>;
   private coinIcon: Node;
   private lvLabel: ReturnType<typeof makeLabel>;
@@ -42,12 +44,12 @@ export class HudView {
     parent.addChild(node);
     this.node = node;
 
-    /* HUD 流式等距布局（2026-09-10）：
-     * 此前各元素 x 写死（0/68/132/208/276），暂停钮移除后左侧空出 34px 无人补位（截图可见左侧凹陷）。
-     * 改为「先定各元素宽度 → 剩余空间均分为间隙 → 从左到右顺次摆放」，首元素贴左、末元素贴右、
-     * 间隙全等；列宽变化（宽屏/不同设计宽）时自动重排，无需再手改坐标。 */
-    const BW = 25, LVW = 59, HPW = 71, PRW = 63, CNW = 75;   // 与下面对应元素的视觉宽一一对应
-    const gap = (w - (BW + LVW + HPW + PRW + CNW)) / 4;
+    /* HUD 布局（2026-09-10 等距流式 → 2026-09-24 改为左对齐）：
+     * 旧实现「剩余空间均分为间隙」会把金币胶囊推到最小可用的右界，与微信小游戏
+     * 右上角系统胶囊（menu/close 悬浮钮）重叠/抢碰触区（用户指令）。改为固定间隙
+     * 左对齐紧凑排布，右侧空出固定地带给系统胶囊；宽窄屏上元素间距恒定不漂移。 */
+    const BW = 25, LVW = 59, HPW = 71, CNW = 75;   // 与下面对应元素的视觉宽一一对应（2026-09-22：进度胶囊移除后剩 4 元素）
+    const gap = 8;                                 // 2026-09-24：左对齐固定间隙（右侧留白给微信系统胶囊）
     let cx = 0;
 
     const restart = this.iconBtn(cx, BW, 'restart', g => drawRestartIcon(g));
@@ -85,20 +87,7 @@ export class HudView {
     this.hpHost = hpHost;
     cx += HPW + gap;
 
-    // 进度胶囊（d-progress：剩 N 只）
-    const progHost = new Node('prog-pill');
-    place(progHost, cx, PILL_TOP, PRW, PILL_H);
-    const prog = whitePill(PRW, PILL_H);
-    prog.node.setPosition(PRW / 2, -PILL_H / 2, 0);
-    progHost.addChild(prog.node);
-    const pl = makeLabel('剩 0 只', 11, '#44613c');
-    placeC(pl.node, PRW / 2, -PILL_H / 2, PRW - 4, 14);
-    progHost.addChild(pl.node);
-    node.addChild(progHost);
-    this.progLabel = pl;
-    cx += PRW + gap;
-
-    // 金币胶囊（d-coin：右对齐）
+    // 金币胶囊（d-coin：左对齐排尾，2026-09-24 起不再右贴——右侧让给微信系统胶囊）
     const coinHost = new Node('coin-pill');
     place(coinHost, cx, PILL_TOP, CNW, PILL_H);
     const coin = whitePill(CNW, PILL_H);
@@ -154,7 +143,7 @@ export class HudView {
   }
 
   /** 全量刷新：hp 变化时重建心形；lostIdx 指定刚失去的心（碎裂动画） */
-  render(hp: number, left: number, coinsShown: number, lostIdx: number): void {
+  render(hp: number, coinsShown: number, lostIdx: number): void {
     if (hp !== this.lastHp) {
       this.lastHp = hp;
       this.hearts.slice().forEach(h => h.destroy());
@@ -194,8 +183,6 @@ export class HudView {
           .start();
       }
     }
-    // 修复（2026-09-06 01:20:00）：同 setLevel —— 需写入包装对象的 .label.string
-    this.progLabel.label.string = '剩 ' + left + ' 只';
     this.coinLabel.label.string = String(coinsShown);
   }
 

@@ -1,5 +1,9 @@
 /* 对局状态机（core 层核心，禁止 import 'cc'，可 Node 直跑）
- * 修改时间：2026-09-10 21:41 —— 复活回血改走 REVIVE_HP 常量（hp = HP_MAX → 回 1 颗，用户需求）。
+ * 修改时间：2026-09-26 23:30 —— 新增自动挪窝兜底（B 档）：tryAutoReshuf()——
+ *   三道具（吊车/转身/挪窝）全部用尽且全场互锁时免费 reflow 一次（上限 AUTO_RESHUF_MAX），
+ *   受 AUTO_RESHUF_ENABLED 开关控制；常量见 Constants.ts。
+ * 2026-09-24 19:36 —— start() 的关卡上限硬编码 30 改走 Constants.MAX_LEVEL（60）。
+ * 2026-09-10 21:41 —— 复活回血改走 REVIVE_HP 常量（hp = HP_MAX → 回 1 颗，用户需求）。
  * 2026-09-10 19:17 —— 走廊遮挡语义配套：takeAnimal 移走动物后立即
  *   2026-09-10 21:10 —— 朝向生成逻辑重构（Rush Hour 式构造式放置）：generate 改为 
  *   "对局中出现动物路径相对、方向冲突"的根因）。
@@ -29,7 +33,7 @@ import type { BestSale, LevelConfig, Match, Order, Phase, Rng, Slot, TakeOutcome
 import { Animal } from './Types';
 import { allLocked, assignDirsNoHeadOn, blockerOf, clusterLayout, countFence, countUnlocked, hasBlockCycle, herdLeft, isBlocked, randDir, repairUnlocks, reflow, shuffle, unlockedCountOf, unlockedSet } from './Board';
 import { levelCfg } from './LevelCfg';
-import { CRANE_MAX, DEFAULT_SEED, FENCE_MAX, FLIP_MAX, GRID_COLS, HP_MAX, ORDER_QTY3_P, REVIVE_HP, REVIVE_MAX, SHUF_MAX, SLOT_OPEN, SLOT_TOTAL, TYPE_MAP, TYPES } from './Constants';
+import { AUTO_RESHUF_ENABLED, AUTO_RESHUF_MAX, CRANE_MAX, DEFAULT_SEED, FENCE_MAX, FLIP_MAX, GRID_COLS, HP_MAX, MAX_LEVEL, ORDER_QTY3_P, REVIVE_HP, REVIVE_MAX, SHUF_MAX, SLOT_OPEN, SLOT_TOTAL, TYPE_MAP, TYPES } from './Constants';
 import { mulberry32 } from './Seed';
 
 export class GameSession {
@@ -47,6 +51,8 @@ export class GameSession {
   craneLeft = CRANE_MAX;
   flipLeft = FLIP_MAX;
   shufLeft = SHUF_MAX;
+  /** 本局自动挪窝剩余次数（B 档兜底），start() 重置为 AUTO_RESHUF_MAX。 */
+  autoReshufLeft = AUTO_RESHUF_MAX;
   phase: Phase = 'play';
   soldByType: Record<string, { n: number; rare: number }> = {};
   bestSale: BestSale | null = null;
@@ -61,7 +67,7 @@ export class GameSession {
    *  - 不传 seed / 传 -1：调度走全局 Math.random（sim 链路注入 mulberry32 时可对拍；玩家真实游玩每次不可预测）
    *  - 传 seed≥0：调度走 mulberry32(seed)，同 seed 双跑 100% 一致（用于回放/Debug） */
   start(level: number, seed: number = DEFAULT_SEED): void {
-    this.level = Math.max(1, Math.min(30, level | 0));
+    this.level = Math.max(1, Math.min(MAX_LEVEL, level | 0));
     this.cfg = levelCfg(this.level);
     this.fence = [];
     this.coins = 0;
@@ -71,6 +77,7 @@ export class GameSession {
     this.craneLeft = CRANE_MAX;
     this.flipLeft = FLIP_MAX;
     this.shufLeft = SHUF_MAX;
+    this.autoReshufLeft = AUTO_RESHUF_MAX;
     this.soldByType = {};
     TYPES.forEach(t => { this.soldByType[t.id] = { n: 0, rare: 0 }; });
     this.bestSale = null;
@@ -501,6 +508,22 @@ export class GameSession {
   useShuffle(): boolean {
     if (this.shufLeft <= 0) return false;
     this.shufLeft--;
+    reflow(this.herd, this.rng, this.cfg.tightness);
+    return true;
+  }
+
+  /** 自动挪窝兜底（B 档，2026-09-26 新增）：吊车/转身/挪窝三道具**全部用尽**且
+   *  全场互锁（allLocked，无一只动物可点击）时，免费打散重排一次（等价一次"挪窝"，次数
+   *  上限 AUTO_RESHUF_MAX）。返回 true = 本次执行了自动挪窝（view 需触发提示与重渲染）。
+   *  语义：道具链正常优先消费，本方法只做极端死锁兜底；触发即扣次数，防无限循环。
+   *  纯读判定部分不耗随机流；reflow 消费 rng（洗牌盘面），故**触发会扰动快照随机流**。 */
+  tryAutoReshuf(): boolean {
+    if (!AUTO_RESHUF_ENABLED) return false;
+    if (this.autoReshufLeft <= 0) return false;
+    // 三道具全部用尽（吊车/转身/挪窝次数均 0）——玩家已无主动救援手段，才轮到免费兜底
+    if (this.craneLeft > 0 || this.flipLeft > 0 || this.shufLeft > 0) return false;
+    if (!allLocked(this.herd)) return false;      // 尚有可点动物 = 非死锁，不触发
+    this.autoReshufLeft--;
     reflow(this.herd, this.rng, this.cfg.tightness);
     return true;
   }

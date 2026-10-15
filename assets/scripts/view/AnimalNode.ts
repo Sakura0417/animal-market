@@ -11,6 +11,8 @@
  *   稀有金环视觉已移除（2026-09-08 用户要求；rare 仍影响售价与结算文字标注）。
  * 分层避免绘制缩放与 bonk/bounce 动画互相覆盖。
  * 视觉随机量（rot 倾斜）在本层生成，不污染 core 随机流（种子对拍纪律）。
+ * 修改时间：2026-10-08 11:45 —— UI 审查 **H2（实为运行时 BUG）**：`'quad-in'` → `'quadIn'`（bonk 冲撞加速段）。
+ *   引擎只在首字符大写时归一化短横线名，小写写法查表落空 ⇒ 缓动静默退化为线性。详见 Panels.ts 头部条目。
  * 修改时间：2026-09-10 17:16 —— 移除 bounceUnlock（解锁弹跳缩放 0.85→1.16→1.0）：
  *   用户反馈点击一只动物后周围新解锁动物放大、观感为"点击效果泄漏"，不符合预期；
  *   点击只影响被点动物自身（走出 / bonk 冲撞弹回），周围动物显示状态零变化。
@@ -151,7 +153,7 @@ export class AnimalNodeC {
     const travel = Math.min(0.6, Math.max(0.14, hitDist / 380));
     Tween.stopAllByTarget(this.node);
     tween(this.node)
-      .to(travel, { position: contact }, { easing: 'quad-in' })   // 加速冲向接触点
+      .to(travel, { position: contact }, { easing: 'quadIn' })   // 加速冲向接触点
       .call(() => {
         if (onImpact) onImpact();                                  // 接触瞬间：碰撞流程
         if (this.flash) {

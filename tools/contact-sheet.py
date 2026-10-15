@@ -17,7 +17,8 @@ def decode(path):
     assert d[:8] == b'\x89PNG\r\n\x1a\n', path + ' 不是 PNG'
     w, h = struct.unpack('>II', d[16:24])
     bd, ct = d[24], d[25]
-    assert bd == 8 and ct == 6, f'{path} 仅支持 8bit RGBA，实为 bitdepth={bd} ctype={ct}'
+    assert bd == 8 and ct in (2, 6), f'{path} 仅支持 8bit RGB/RGBA，实为 bitdepth={bd} ctype={ct}'
+    ch = 3 if ct == 2 else 4          # 通道数（2=RGB 截图，6=RGBA 素材）
     idat, i = b'', 8
     while i < len(d):
         ln = struct.unpack('>I', d[i:i+4])[0]
@@ -26,8 +27,8 @@ def decode(path):
             idat += d[i+8:i+8+ln]
         i += 12 + ln
     raw = zlib.decompress(idat)
-    bpp, stride = 4, w * 4
-    out = bytearray(h * stride)
+    bpp, stride = ch, w * ch
+    out = bytearray(h * w * 4)
     prev = bytearray(stride)
     p = 0
     for y in range(h):
@@ -49,8 +50,15 @@ def decode(path):
                 pa, pb, pc = abs(b-c), abs(a-c), abs(a+b-2*c)
                 pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
                 line[x] = (line[x] + pr) & 255
-        out[y*stride:(y+1)*stride] = line
         prev = line
+        # 统一按 RGBA 输出（RGB 源补 alpha=255，下游无需分支）
+        base = y * w * 4
+        if ch == 4:
+            out[base:base + w * 4] = line
+        else:
+            for x in range(w):
+                s = x * 3; o = base + x * 4
+                out[o] = line[s]; out[o+1] = line[s+1]; out[o+2] = line[s+2]; out[o+3] = 255
     return w, h, bytes(out)
 
 def encode(path, w, h, px):

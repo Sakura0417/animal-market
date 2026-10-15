@@ -1,6 +1,40 @@
 /* ============================================================
  * GameView（VIEW 总控 · A1）——《动物集市》Cocos 移植的对局组装层
- * 修改时间：2026-09-10 21:41 —— ① 吊车取消"首次免费"，改为每次使用都看激励视频（与翻转/洗牌
+ * 修改时间：2026-10-08 11:45 —— UI 审查 H3：buildLayout 内新增**安全区平移自检断言**
+ *   （DEBUG_PROBE 下生效）——Park/Fence/Pen 三块的 top 必须等于「无 inset 累加值 +
+ *   column 平移量 dh/2 − topIn」。此前这条约定只写在注释里，改 column 平移公式或给某块单独
+ *   加 inset 会静默破坏它且只在真机刘海机型暴露（普通屏 topIn=0 恒真、查不出来）。
+ *   纯防御、零视觉变化；无代码逻辑改动。
+ * 修改时间：2026-09-24 19:36 —— 通关面板 hasNext 与"下一关"推进的关卡上限硬编码 30 改走 Constants.MAX_LEVEL。
+ * 2026-09-24 18:56 —— ① 底部留白不再双重叠加：`PAD_BOTTOM + bottomIn` → `max(PAD_BOTTOM, bottomIn)`
+ *   （用户："按钮调小了，可以缩短底部安全区"）。iPhone 类机型底部空白 46→34px，牧场增高 12px；
+ *   非异形屏恒为 12（逐像素不变），Home 条安全区仍完整让出。Toast 同用该基准。
+ * 修改时间：2026-09-27 00:00 —— 玩家可见文案"生命"表述**部分回退**（用户确认恢复原文案）：
+ *   碰撞浮字 `-1 生命/生命耗尽`、复活成功 `❤️ 生命恢复 1 颗，继续营业` 恢复原样；
+ *   其余保持去"生命"版：toast 去"生命剩 N 颗"、互锁提示改"可用吊车吊走挡路动物"、
+ *   吊车 toast 去"不扣生命"。机制/HUD 始终不动。
+ * 2026-09-26 23:48 —— 玩家可见文案取消"生命/扣心"表述（机制不动）：
+ * 2026-09-26 23:30 —— 自动挪窝兜底（B 档）接线：reconcile 判定链 isStuck 前调用
+ *   session.tryAutoReshuf()（三道具用尽 + 全场互锁 → 免费重排 + toast 提示），替代碰撞扣心硬扛。
+ *   2026-09-24 17:35 —— 道具文案「翻转」→「转身」、「洗牌」→「挪窝」（UI + toast + 注释同步）。
+ *   2026-09-24 16:29 —— PARK_H 回到 84（槽高按用户要求维持 68，不再抬高停车带）；
+ *   ≥3 种订单改 2 列换行后，槽内布局已能在 68 内居中，无需额外带高。
+ *   2026-09-24 15:27 —— PARK_H 84→106（配合 ParkView 车位槽重构：槽高 68→86，
+ *   让「卡车 + 3 行订单」有居中余量）。⚠️ 停车带抬高会等量压缩牧场高度（penH −22），
+ *   两处常量（GameView.PARK_H / ParkView.PARK_BAND_H）必须同值。
+ *   2026-09-24 13:30 —— ① start 预加载链并入自带子集字体加载（先于 buildLayout 就位，
+ *   失败不阻塞、回退系统字体 —— 真机文字清晰化的落点）；② HUD 调用同步（顶部「剩 N 只」胶囊已移除）。
+ *   2026-09-21 23:22 —— 首帧防黑：相机清屏色改游戏绿 + start 预加载前同步铺整屏绿底
+ *   （插屏结束到 buildLayout 之间的空窗期不再黑屏；buildLayout 的原 4 段绿底合并进 paintBootBg）。
+ *   2026-09-19（二次）—— ① 新增 `AD_ENABLED` 总开关（默认关闭）：关闭时无广告环境，
+ *   7 个点位**直接发放奖励**、UI 无任何广告元素（文案/角标见各 view 文件），玩法不缺失；
+ *   ② 修复「营收翻倍后面板不刷新」：`win()` 拆出 `showWinPanel()`，"翻倍"后调后者重弹
+ *   （旧实现翻倍回调里调 `win()`，被 phase 守卫静默拦掉 ⇒ 金币翻倍了但面板数字没变）。
+ *   2026-09-19 —— 接入真实激励视频：① 7 个广告位全部挂点位标识（services/AdPoints.ts）
+ *   并改三态回调，**失败/中途关闭不再发放奖励**（旧兜底 `onSkip || onDone` 是刷奖励漏洞）；
+ *   ② 每个奖励分支加 fxGen 代数校验（广告展示期间可能已重开局）；
+ *   ③ 失败反馈统一走 adClosedHint（面板打开时用 Panels.tipDanger，Toast 会被模态遮罩压住）。
+ *   2026-09-10 21:41 —— ① 吊车取消"首次免费"，改为每次使用都看激励视频（与转身/挪窝
  *   同构，craneUsed 字段退役）；② failFence 面板接线由 4 出口收为 2（放生看广告 / 重开）；
  *   ③ failHp 复活提示语改"恢复 1 颗"（core REVIVE_HP 配套）。
  *   2026-09-10 18:33（① 暂停链路清退：HUD 暂停钮 + showPause + Panels.pause；
@@ -30,9 +64,13 @@
  *      - 装车链 reconcile → findMatch → fulfillSlot（逐只飞上卡车）→ departSlot（发车补车）
  *      - 失败链：围栏挤爆（failwait → failFence）/ 生命耗尽（failHP）/ 死局（noStockEnd）
  *      - 胜利链：isWin → 彩带雨 + 大飘字 + win 面板（翻倍广告 → 下一关/再玩）
- *      - 救援链：吊车（每局首次免费）→ 翻转 → 洗牌，全部挂广告点位
+ *      - 救援链：吊车 → 转身 → 挪窝，全部挂激励视频点位（每次使用都需看完广告，含吊车）
  *      - 车位解锁：锁定车位点击 → 广告 → unlockSlot
- *   4. 广告：AdService 注入 Panels.ad 演示层（dev/浏览器）；wx 真机由 PlatformAdapter 承担。
+ *   4. 广告：AdService 统一入口（点位标识见 services/AdPoints.ts，三态回调 rewarded/skipped/
+ *      unavailable）；**总开关 `AD_ENABLED`（platform/AdConfig.ts，默认 false）关闭时**：
+ *      点位直接发放奖励、不创建 wx 实例、不走演示层、UI 无任何广告元素；打开才启用真实广告。
+ *      dev/浏览器注入 Panels.ad 演示层，wx 真机由 PlatformAdapter 承担
+ *      （实例池 + 错误码分流 + 失效重建）。
  * 纪律：
  *   - 动画代数 fxGen 与原型一致：重开局 +1，旧代 scheduleOnce 回调一律作废；
  *     同时用 unscheduleAllCallbacks 双保险清掉挂起计时（crane/fail/装车链）。
@@ -43,16 +81,17 @@
  *   - busy 簿记与代数解耦（同 walks 硬化）：busy-- 必须先于 fxGen 判定执行，且只做一次。
  *   - coinsShown：HUD 金币数字等 flyCoin 飞达才更新（入账爽感，原型同款）。
  * 布局（原型 game.html + styles.css 换算，375 设计宽；列宽 351 = 375 - 12*2）：
- *   padding 6/12/12 ｜ HUD(34)+10 ｜ park(84)+8 ｜ fence(40)+10 ｜ pen(flex:1)+10 ｜ tools(54)
+ *   padding 6/12/12 ｜ HUD(34)+10 ｜ park(84)+8 ｜ fence(46)+10 ｜ pen(flex:1)+10 ｜ tools(54)
  * ============================================================ */
-import { _decorator, Component, Node, Tween, tween, UIOpacity, UITransform, Vec3, view } from 'cc';
+import { _decorator, Camera, Color, Component, director, Font, Node, resources, sys, Tween, tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { GameSession } from '../core/GameSession';
 
-import { CONTACT_DIST, CONTACT_FLOOR, CONTACT_TRAVEL_MAX, CONTACT_TRAVEL_MIN, CONTACT_TRAVEL_SPEED, FENCE_MAX, SLOT_TOTAL, TYPES, WALK_LANE_GAP } from '../core/Constants';
+import { CONTACT_DIST, CONTACT_FLOOR, CONTACT_TRAVEL_MAX, CONTACT_TRAVEL_MIN, CONTACT_TRAVEL_SPEED, FENCE_MAX, MAX_LEVEL, SLOT_TOTAL, TYPES, WALK_LANE_GAP } from '../core/Constants';
 import type { Animal, Dir, Match } from '../core/Types';
 import { AdService } from '../services/AdService';
+import type { AdOutcome } from '../platform/PlatformAdapter';
 import { LastResult, SaveService } from '../services/SaveService';
-import { col, dashedRoundRect, newG } from './Draw2D';
+import { col, dashedRoundRect, newG, setUIFont } from './Draw2D';
 import { FenceView } from './FenceView';
 import { FxService } from './FxService';
 import { HudView } from './HudView';
@@ -74,9 +113,10 @@ const COL_PAD = 12;          // game-root 左右留白
 const HUD_TOP = 6;           // 顶部留白
 const HUD_H = 34;            // d-iconbtn 高
 const GAP_HUD_PARK = 10;     // d-hud margin-bottom
-const PARK_H = 84;           // d-park（ParkView 内部固定 84）
+const PARK_H = 84;           // 停车带高（2026-09-24 三次调整：槽高按用户要求维持 68，带高回到 84；ParkView.PARK_BAND_H 必须同值）
 const GAP_PARK_FENCE = 8;    // d-park margin-bottom
-const FENCE_H = 40;          // d-fence 槽位 ≈ (351-34-8-30)/7 ≈ 39.86
+const FENCE_H = 46;          // 围栏带高（2026-09-26 23:01：去掉左侧「围栏 0/7」标签后格子放大到
+                             //   44×44，条高需 ≥ 44 + 上下留白；+6 由牧场弹性高度吸收，pen −1%）
 const GAP_FENCE_PEN = 10;    // d-fencebar margin-bottom
 const GAP_PEN_TOOLS = 10;    // d-pen margin-bottom
 const TOOLS_H = 54;          // d-tool 高
@@ -88,6 +128,35 @@ const BUILD_TAG = 'planA-20260907b';
 /** 看门狗诊断探针开关：每 1.5s 打印 phase/busy/walks/fence/panel，用于定位卡点。
  *  判修完成后改 false 即静默（保留设施，下次排查再开）。 */
 const DEBUG_PROBE = true;
+
+/** 刘海屏/全面屏安全区内边距（**设计单位**，返回值已可直接参与本文件的布局运算）。
+ *
+ * 数据源用引擎的 `sys.getSafeAreaRect()`，**不要自己读 wx.getSystemInfoSync().safeArea**。
+ *
+ * 【旧实现的定量错误，2026-09-21 定位】此前写的是 `wx.safeArea.top / s`：
+ *   · `wx.safeArea.top` 的单位是**逻辑 px（pt）**，刘海屏 iPhone X 类机型 = 44；
+ *   · 而 `s = min(vis.width/375, vis.height/667)`，本项目 `view.getVisibleSize()` 返回的是
+ *     **物理像素**（375pt@2x 屏 ⇒ vis = 750×1624）⇒ s = 2，即 s 是"物理 px / 设计单位"；
+ *   · 于是 `44 / 2 = 22`，**只有正确值的一半**（正确 = 44 设计单位）；底部同理 `34 / 2 = 17`
+ *     （正确 = 34）。这与用户截图完全吻合：HUD 只下移 22pt 仍被刘海压住、道具栏压住 Home 条。
+ * 引擎的 `getSafeAreaRect()` 内部已 `_convertToUISpace`，返回的就是与 `view.getVisibleSize()`
+ * **同一坐标系**的值（见引擎 `ui/safe-area.ts` 的用法），故只需再除以 s 一次即可。
+ *
+ * 另两个好处：① 非异形屏返回与 visibleSize 等大的 Rect ⇒ 内边距恒为 0，普通屏逐像素不变；
+ * ② 编辑器预览 / 浏览器同走该 API（pal 层返回等大 Rect）⇒ 预览所见即真机行为，无平台分支。
+ *
+ * 坐标系：按引擎写法，`getSafeAreaRect()` 原点在**可见区左下角**，
+ * 故 `bottom = sa.y`、`top = 可见高 − sa.y − sa.height`。
+ *
+ * `symmetric=false`：取设备**真实**安全区（上下不强制对称），少占游戏区；
+ * 想要上下等宽留白，把参数改成 `sys.getSafeAreaRect(true)` 即可。 */
+function safeInsetsInDesignUnits(visH: number, s: number): { top: number; bottom: number } {
+  const sa = sys.getSafeAreaRect(false);
+  return {
+    top: Math.max(0, (visH - sa.y - sa.height) / s),
+    bottom: Math.max(0, sa.y / s),
+  };
+}
 
 @ccclass('GameView')
 export class GameView extends Component {
@@ -113,6 +182,7 @@ export class GameView extends Component {
   private fxGen = 0;                   // 动画代数：重开局 +1，旧代回调作废
   private craneMode = false;           // 吊车瞄准模式
   private doubled = false;             // 营收翻倍（win 面板广告点位）
+  private winStars = 3;                // 本次结算星级（win 时算一次；"翻倍"重弹面板时复用，避免二次计算漂移）
   private coinsShown = 0;              // HUD 显示金币（等 flyCoin 飞达才追平 session.coins）
   private lostHeartIdx = -1;           // 刚失去的心 index（心碎动画一次性标记）
   private firstRun = true;             // 本次启动是否弹「开局须知」（重开/下一关不弹）
@@ -170,18 +240,32 @@ export class GameView extends Component {
    *  预加载走的是 resources 本地资源（6 张动物图 + 8 张图标，总计约 300KB），耗时约 1 帧；
    *  预加载完成后各素材 cache 命中，回调同步执行 ⇒ 首帧即最终形态，无闪烁。 */
   async start(): Promise<void> {
+    // 首帧防黑（2026-09-21）：插屏结束到 buildLayout 之间，相机用默认黑色清屏，而
+    // animal/icons 预加载又是异步 ⇒ 出现"黑一下再进游戏"。两层兜底：
+    // ① 相机清屏色改游戏绿（覆盖场景装载的空帧）；② 预加载前先同步铺整屏绿底。
+    const cam = director.getScene()?.getComponentInChildren(Camera);
+    if (cam) { cam.clearColor = new Color(0x97, 0xd6, 0x8d, 0xff); }
+    this.paintBootBg();
     await new Promise<void>((resolve) => {
-      let left = 2;
+      let left = 3;
       const done = (): void => { if (--left === 0) resolve(); };
       preloadAnimalArt(done);
       preloadIcons(done);
+      // 2026-09-24：真机文字清晰化 —— 子集字体先于 buildLayout 就位，此后全部 Label 同源渲染；
+      // 失败不阻塞：setUIFont 不调用即整体回退系统字体
+      resources.load('fonts/zcool-kuaile-ui', Font, (err, f) => {
+        if (!err) setUIFont(f);
+        else console.warn('[GameView] UIFont 加载失败，文字回退系统字体：', err);
+        done();
+      });
     });
     if (!this.node || !this.node.isValid) return;   // 加载期间节点已销毁（切场景/热重载）
     this.booted = true;
     this.level = SaveService.loadLevel();   // 续档：从存档关卡进入对局
     this.buildLayout();
     // dev/浏览器：把 Panels 的 3 秒演示广告层注入 AdService（wx 真机自动切换真实广告）
-    this.ad.registerDevDisplay((onDone) => this.panels.ad(onDone));
+    // 2026-09-19：演示层回调带 watched 参数——true=看完(发奖) / false=点跳过(不发奖)
+    this.ad.registerDevDisplay((done) => this.panels.ad(done));
     this.schedule(this.watchdogTick, 1.5);   // 空闲看门狗：保证车辆永远自动补齐
     this.startGame();
   }
@@ -189,7 +273,25 @@ export class GameView extends Component {
   onDestroy(): void {
     if (!this.booted) return;               // start 的 await 还没回来 → 子系统尚未创建，别碰
     this.panels.adCancel();                 // 清掉演示广告的 setTimeout
+    this.ad.reset();                        // 2026-09-19：清在途广告簿记 + 看门狗计时
+    this.ad.adapter.destroy();              // 回收 wx 广告实例（平台资源不随组件自动回收）
     this.unscheduleAllCallbacks();
+  }
+
+  /** 首帧防黑（2026-09-21）：预加载前同步铺整屏绿底（4 段平带，与游戏 bg 同构），
+   *  之后 design 层（含其内自绘背景）叠加其上。只负责占位底色，不做任何业务装配。 */
+  private paintBootBg(): void {
+    const vis = view.getVisibleSize();
+    const bg = newG('bg', vis.width, vis.height);
+    const bands: [string, number, number][] = [
+      ['#97d68d', 0, 0.28], ['#8bcf80', 0.28, 0.55], ['#82ca7b', 0.55, 0.78], ['#6cbf6e', 0.78, 1]
+    ];
+    bands.forEach(([hex, t0, t1]) => {
+      bg.g.fillColor = col(hex);
+      bg.g.rect(-vis.width / 2, -vis.height / 2 + vis.height * (1 - t1), vis.width, vis.height * (t1 - t0) + 0.7);
+      bg.g.fill();
+    });
+    this.node.addChild(bg.node);
   }
 
   /** 搭建设计空间与全部子视图（唯一一处涉及屏幕尺寸换算的地方） */
@@ -199,23 +301,22 @@ export class GameView extends Component {
     const s = Math.min(vis.width / DESIGN_W, vis.height / DESIGN_H_MIN);
     const dw = vis.width / s;
     const dh = vis.height / s;
+    // 刘海屏安全区（2026-09-21）：顶部刘海/状态栏、底部 Home 指示条让出留白，关键内容
+    // （HUD / 道具栏）整体内缩不贴系统 UI；普通屏 inset=0 ⇒ 布局与改造前逐像素一致。
+    // 尺寸换算：design 节点 scale=s（设计单位 × s = 可见区单位）⇒ 内边距已是设计单位。
+    const insets = safeInsetsInDesignUnits(vis.height, s);
+    const topIn = insets.top;
+    const bottomIn = insets.bottom;
+    // 真机诊断（一眼看出安全区是否生效）：真机控制台应打印非零 inset，编辑器预览为 0。
+    console.log('[GameView] safeInsets(design) top=' + topIn.toFixed(1) + ' bottom=' + bottomIn.toFixed(1)
+      + ' | vis=' + vis.width.toFixed(0) + 'x' + vis.height.toFixed(0) + ' s=' + s.toFixed(3));
     const design = new Node('design');
     design.addComponent(UITransform).setContentSize(dw, dh);   // 锚点默认 (0.5,0.5) 居中
     design.setScale(s, s, 1);
     this.node.addChild(design);
     this.design = design;
 
-    // 屏幕底色：4 段渐变近似原型 .screen--game（linear-gradient 180deg #97d68d→#82ca7b→#6cbf6e）
-    const bg = newG('bg', dw, dh);
-    const bands: [string, number, number][] = [
-      ['#97d68d', 0, 0.28], ['#8bcf80', 0.28, 0.55], ['#82ca7b', 0.55, 0.78], ['#6cbf6e', 0.78, 1]
-    ];
-    bands.forEach(([hex, t0, t1]) => {
-      bg.g.fillColor = col(hex);
-      bg.g.rect(-dw / 2, -dh / 2 + dh * (1 - t1), dw, dh * (t1 - t0) + 0.7); // 自上而下铺色带
-      bg.g.fill();
-    });
-    design.addChild(bg.node);
+    // 屏幕底色已在 start() 首帧防黑时用 paintBootBg 铺到 this.node（design 之下），此处不再重复绘制
 
     // 布局列容器：锚点(0,1)=左上（Ui.place 的容器纪律：子节点 place(l,t) → position(l,-t)），
     // 定位到屏幕左上角；Hud/Park/Fence/Tools/Pen 全部挂这层。
@@ -225,7 +326,7 @@ export class GameView extends Component {
     const colUt = column.addComponent(UITransform);
     colUt.setAnchorPoint(0, 1);
     colUt.setContentSize(dw, dh);
-    column.setPosition(-dw / 2, dh / 2, 0);
+    column.setPosition(-dw / 2, dh / 2 - topIn, 0);   // 整体下移 topIn，让出顶部刘海/状态栏
     design.addChild(column);
 
     // 内容列左缘：宽扁屏（dw>375）时 375 列居中，两侧用底色补齐
@@ -241,8 +342,12 @@ export class GameView extends Component {
     // 围栏 7 格条
     const fenceTop = parkTop + PARK_H + GAP_PARK_FENCE;                 // 142
     this.fence = new FenceView(column, colX, fenceTop, DESIGN_W - COL_PAD * 2, FENCE_H);
-    // 底部道具栏（吊车/翻转/洗牌）
-    const toolsTop = dh - PAD_BOTTOM - TOOLS_H;
+    // 底部留白（2026-09-24 缩短，用户："按钮调小了，可以缩短底部安全区"）：
+    //   原写法 PAD_BOTTOM + bottomIn 是**双重叠加** —— iPhone 类机型合计 12+34 = 46px 空白，
+    //   按钮被推得过高。现取两者较大值：非异形屏仍是 12（逐像素不变），异形屏为 34
+    //   （仍完整让出 Home 条安全区，只是不再叠加内边距）。牧场因此增高 12px。
+    const bottomInEff = Math.max(PAD_BOTTOM, bottomIn);
+    const toolsTop = dh - bottomInEff - TOOLS_H - topIn;
     this.tools = new ToolsBar(column, colX, toolsTop, DESIGN_W - COL_PAD * 2, {
       onCrane: () => this.enterCraneMode(),
       onFlip: () => this.useFlip(),
@@ -256,6 +361,30 @@ export class GameView extends Component {
     const penLeft = COL_PAD + roadOut;                   // 44.25（列内居中）
     const penTop = fenceTop + FENCE_H + GAP_FENCE_PEN + roadOut;              // ≈224.5
     const penH = toolsTop - GAP_PEN_TOOLS - roadOut - penTop;                 // ≈478
+
+    /* 布局自检（2026-10-08）——把"中间三块随 column 平移"这条隐式约定变成可执行断言。
+       背景：HUD 与 ToolsBar 各自显式做了 inset 处理（toolsTop 里含 bottomInEff/topIn），
+       而 Park/Fence/Pen 的 top 只累加自 HUD_TOP —— 它们**依赖 column 节点的整体平移**
+       （见上方 column.setPosition(-dw/2, dh/2 - topIn)）才能让出刘海。这条约定此前只存在于
+       注释里，任何一次改 column 平移公式、或给某个中间块单独加 inset，都会静默破坏它，
+       且只在真机刘海机型暴露（普通屏/预览 topIn=0 恒真，查不出来）。
+       断言口径：三块的 top 必须等于「无 inset 时累加值 + column 平移量 dh/2 - topIn」。
+       普通屏/预览 topIn=0 ⇒ 自动恒真、零副作用。 */
+    if (DEBUG_PROBE) {
+      const shift = dh / 2 - topIn;   // 与 column.setPosition 同源，改一处必须同改
+      const chk: [string, number, number][] = [
+        ['ParkView', parkTop, HUD_TOP + HUD_H + GAP_HUD_PARK + shift],
+        ['FenceView', fenceTop, HUD_TOP + HUD_H + GAP_HUD_PARK + PARK_H + GAP_PARK_FENCE + shift],
+        ['PenView', penTop, HUD_TOP + HUD_H + GAP_HUD_PARK + PARK_H + GAP_PARK_FENCE + FENCE_H + GAP_FENCE_PEN + roadOut + shift],
+      ];
+      for (const [name, actual, expect] of chk) {
+        if (Math.abs(actual - expect) > 0.01) {
+          console.error('[layout] ' + name + ' 未随安全区平移：actual=' + actual.toFixed(2)
+            + ' expect=' + expect.toFixed(2) + ' shift=' + shift.toFixed(2)
+            + '（刘海机型会与普通屏出现两套间距；检查 column 平移公式 / 该块是否被单独加了 inset）');
+        }
+      }
+    }
 
     // 农村土路：环带贴牧场边界向外铺满 ROAD_W（中心线在边界外 半宽），
     // 画在 pen 之下（内半圈被草地盖住），动物走出牧场即落在路中央。
@@ -275,7 +404,7 @@ export class GameView extends Component {
     this.pen = new PenView(column, penLeft, penTop, penW, penH, (uid) => this.takeAnimal(uid));
 
     // 覆盖层按 z 序自下而上：toast → 面板 → 特效（原型 fxLayer 压在 modal 之上，彩带盖住面板）
-    this.toast = new Toast(design, dw, dh);
+    this.toast = new Toast(design, dw, dh, bottomInEff);   // 与道具栏同一底部基准（避免 toast 与按钮错位）
     this.panels = new Panels(design, dw, dh);
     this.fx = new FxService(design, dw, dh);
   }
@@ -301,6 +430,7 @@ export class GameView extends Component {
     this.pen.clear();
     this.panels.hide();
     this.panels.adCancel();
+    this.ad.reset();              // 2026-09-19：丢弃在途广告簿记——旧回调到达即作废（不发奖、不误解锁）
 
     s.start(this.level);          // core：重置全部状态 + 散点生成 + tryDispatch 补车
     track({ event: 'level_start', level: s.level });   // T8 埋点（2026-09-07）：最小 5 事件集
@@ -357,10 +487,10 @@ export class GameView extends Component {
     this.pen.render(this.session.herd, this.craneMode);
   }
 
-  /** HUD：进度 = 牧场剩余 + 围栏存货（原型 progEl 口径）；渲染后清掉心碎标记 */
+  /** HUD：金币/生命渲染；渲染后清掉心碎标记（2026-09-22：顶部"剩 N 只"胶囊已移除） */
   private renderHud(): void {
     const s = this.session;
-    this.hud.render(s.hp, s.herdLeftCount() + s.fence.length, this.coinsShown, this.lostHeartIdx);
+    this.hud.render(s.hp, this.coinsShown, this.lostHeartIdx);
     this.lostHeartIdx = -1;
   }
 
@@ -394,7 +524,7 @@ export class GameView extends Component {
       this.craneMode = false;
       this.unschedule(this.craneTick);
       this.renderTools();
-      this.toast.show('吊车吊走一只被挡动物 · 不扣生命');
+      this.toast.show('吊车吊走一只被挡动物');
       this.moveTo(uid, a, true);
       return;
     }
@@ -428,7 +558,7 @@ export class GameView extends Component {
       const travel = Math.min(CONTACT_TRAVEL_MAX, Math.max(CONTACT_TRAVEL_MIN, hitDist / CONTACT_TRAVEL_SPEED));
 
       if (node) {
-        // 接触瞬间：接触点粒子爆开 + "-1 生命"飘字 + 震屏 + 心碎（bonk 内部点亮红闪）
+        // 接触瞬间：接触点粒子爆开 + 碰撞飘字 + 震屏 + 心碎（bonk 内部点亮红闪）
         node.bonk(a.dir, hitDist, () => {
           if (g0 !== this.fxGen) return;
           const pt = contactW ?? node.node.worldPosition.clone();
@@ -436,7 +566,7 @@ export class GameView extends Component {
           this.fx.floatText(pt, hpLeft > 0 ? '-1 生命' : '生命耗尽', false);
           this.fx.shake(this.design);
           this.renderHud();
-          if (hpLeft > 0) this.toast.show('撞到前面的动物了！被弹回原地 · 生命剩 ' + hpLeft + ' 颗');
+          if (hpLeft > 0) this.toast.show('撞到前面的动物了！被弹回原地');
         });
       } else {
         this.renderHud();
@@ -513,7 +643,7 @@ export class GameView extends Component {
         this.scheduleOnce(this.failTick, 0.5);
         return;
       }
-      if (s.allLocked()) this.toast.show('⚠️ 全场互相挡住了！点被挡动物会扣生命，或用吊车吊走');
+      if (s.allLocked()) this.toast.show('⚠️ 全场互相挡住了！可用吊车吊走挡路动物');
     };
     // 2026-09-10 19:52 取消绕行机制（用户指令）：出栏只剩一条路径——**沿自身朝向直走上土路**。
     // 走廊遮挡语义下（core blockedBy = 沿朝向第一占用者），能入栏的动物朝向路径必然全程空，
@@ -568,6 +698,14 @@ export class GameView extends Component {
       if (s.fence.length >= FENCE_MAX && s.phase !== 'failwait') {
         s.markOutcome('failwait');
         this.scheduleOnce(this.failTick, 0.5);
+        return;
+      }
+      // 自动挪窝兜底（B 档，2026-09-26）：三道具用尽 + 全场互锁 → 免费重排一次，替代"碰撞扣心硬扛"。
+      // 放在 isStuck（死局）之前：allLocked 与 isStuck 互斥（后者牧场已清空），触发后递归调和收尾。
+      if (s.canPlay() && s.tryAutoReshuf()) {
+        this.renderAll();
+        this.toast.show('道路全堵住了，自动帮大家重新挪个窝！');
+        step();                                // guard 25 已防死循环；autoReshufLeft 扣到 0 后不再触发
         return;
       }
       if (s.canPlay() && s.isStuck()) this.noStockEnd();     // 剩货凑不齐任何订单 → 死局
@@ -654,17 +792,33 @@ export class GameView extends Component {
    * 救援道具（原型 enterCraneMode / armCrane / useFlip / useShuffle）
    * ============================================================ */
 
-  /** 吊车激活（2026-09-10 21:41 用户需求：与翻转/洗牌保持同构）：
-   *  取消旧的"每局首次免费、之后才看广告"特权 —— 吊车与翻转、洗牌一样是**广告道具**，
+  /** 广告未成交的统一反馈（2026-09-19 接入真实广告）：**只做提示，绝不发放奖励**。
+   *  这是失败兜底的核心不变量——所有点位的 onCancel 都走这里，
+   *  游戏状态只在 onReward 分支里改动。
+   *  面板已弹出时用面板内提示行：覆盖层 z 序是 toast → 面板 → 特效，
+   *  面板打开时 Toast 会被模态遮罩压住，玩家只会看到"点了没反应"。 */
+  private adClosedHint(o: AdOutcome): void {
+    const msg = o === 'skipped' ? '广告未看完，本次不发放奖励' : '广告暂时没有，请稍后再试';
+    if (this.panels.node.active) this.panels.tipDanger(msg);
+    else this.toast.show(msg);
+  }
+
+  /** 吊车激活（2026-09-10 21:41 用户需求：与转身/挪窝保持同构）：
+   *  取消旧的"每局首次免费、之后才看广告"特权 —— 吊车与转身、挪窝一样是**广告道具**，
    *  额度 2 次（core CRANE_MAX），每次进入瞄准模式都需看完激励视频，用尽后按钮置灰。
-   *  ⇒ craneUsed 字段随之退役（广告角标改为常显，见 ToolsBar.render）。 */
+   *  ⇒ craneUsed 字段随之退役（广告角标改为常显，见 ToolsBar.render）。
+   *  2026-09-19：挂点位 'crane' + 代数校验（广告展示期间可能已重开局）。 */
   private enterCraneMode(): void {
     const s = this.session;
     if (!s.canPlay() || this.busy > 0 || this.craneMode) return;
     if (s.craneLeft <= 0) { this.toast.show('本局吊车次数已用完'); return; }
-    this.ad.show(() => {
-      this.armCrane(false);
-    });
+    const g0 = this.fxGen;
+    this.ad.showRewarded('crane',
+      () => {
+        if (g0 !== this.fxGen) return;    // 广告期间已重开局：奖励作废，不污染新局
+        this.armCrane(false);
+      },
+      (o) => this.adClosedHint(o));
   }
 
   /** 吊车瞄准 8 秒：被挡动物虚线圈高亮（AnimalNodeC.setCrane 由 PenView.render 驱动） */
@@ -680,25 +834,29 @@ export class GameView extends Component {
   private useFlip(): void {
     const s = this.session;
     if (!s.canPlay() || this.busy > 0) return;
-    if (s.flipLeft <= 0) { this.toast.show('翻转次数已用完'); return; }
-    this.ad.show(() => {
+    if (s.flipLeft <= 0) { this.toast.show('转身次数已用完'); return; }
+    const g0 = this.fxGen;
+    this.ad.showRewarded('flip', () => {
+      if (g0 !== this.fxGen) return;    // 广告期间已重开局：奖励作废
       if (!s.useFlip()) return;        // core 扣次数 + 全体随机转向
       this.renderAll();
-      this.toast.show('全体转向完成！');
+      this.toast.show('全体转身完成！');
       this.reconcile();                // 转向后可能解锁新单/新目标
-    });
+    }, (o) => this.adClosedHint(o));
   }
 
   private useShuffle(): void {
     const s = this.session;
     if (!s.canPlay() || this.busy > 0) return;
-    if (s.shufLeft <= 0) { this.toast.show('洗牌次数已用完'); return; }
-    this.ad.show(() => {
+    if (s.shufLeft <= 0) { this.toast.show('挪窝次数已用完'); return; }
+    const g0 = this.fxGen;
+    this.ad.showRewarded('shuffle', () => {
+      if (g0 !== this.fxGen) return;    // 广告期间已重开局：奖励作废
       if (!s.useShuffle()) return;     // core 扣次数 + 散点重排
       this.renderAll();
-      this.toast.show('位置已重排！');
+      this.toast.show('全体挪窝完成！');
       this.reconcile();
-    });
+    }, (o) => this.adClosedHint(o));
   }
 
   /* ============================================================
@@ -708,30 +866,38 @@ export class GameView extends Component {
   private unlockSlot(i: number): void {
     const s = this.session;
     if (!s.canPlay() || this.busy > 0) return;
-    this.ad.show(() => {
+    const g0 = this.fxGen;
+    this.ad.showRewarded('slot_unlock', () => {
+      if (g0 !== this.fxGen) return;               // 广告期间已重开局：奖励作废
       if (s.slots[i].state !== 'locked') return;   // 广告期间状态可能已变
       s.unlockSlot(i);                             // core：slotsOpen 扩容 + tryDispatch
       this.renderAll();
       this.toast.show('新车位解锁！卡车已入场');
-    });
+    }, (o) => this.adClosedHint(o));
+    // 未成交时无需重渲染：ParkView 的 TOUCH_END 已改为常驻绑定（2026-09-19 死键修复）
   }
 
   /* ============================================================
    * 失败链（原型 failFence / failHP / noStockEnd）
    * ============================================================ */
 
-  /** 围栏挤爆：两条出路 —— 看广告放生 3 只续局 / 免费重开
+  /** 围栏挤爆：两条出路 —— 放生 3 只续局（开关开时需看广告，关时直接可用）/ 免费重开
    *  （2026-09-10 21:41 用户需求：摘除"清仓大甩卖"与"好友求救"两个旧出口） */
   private failFence(): void {
     this.session.markOutcome('fail');
     track({ event: 'level_fail', level: this.session.level, reason: 'fence' });   // T8 埋点
     this.panels.failFence(
-      () => this.ad.show(() => {   // 吊车放生 3 只 · 返还 50%
-        const n = Math.min(3, this.session.fence.length);
-        const refund = this.session.releaseSome(3);
-        this.coinsShown = this.session.coins;
-        this.afterRescue('放生 ' + n + ' 只 · 回收 ' + refund + ' 金币');
-      }),
+      () => {
+        const g0 = this.fxGen;
+        this.ad.showRewarded('fence_release', () => {   // 吊车放生 3 只 · 返还 50%
+          if (g0 !== this.fxGen) return;                // 广告期间已重开局：奖励作废
+          const n = Math.min(3, this.session.fence.length);
+          const refund = this.session.releaseSome(3);
+          this.coinsShown = this.session.coins;
+          this.afterRescue('放生 ' + n + ' 只 · 回收 ' + refund + ' 金币');
+        }, (o) => this.adClosedHint(o));
+        // 未成交 ⇒ 面板保持打开、按钮保持可点（critical 点位不得锁死）
+      },
       () => this.startGame()
     );
   }
@@ -773,16 +939,21 @@ export class GameView extends Component {
     const canRevive = s.canRevive();
     const left = s.herdLeftCount() + s.fence.length;
     this.panels.failHp(left, canRevive,
-      () => this.ad.show(() => {
-        if (!s.revive()) return;                 // core 守卫：超限无效（双保险）
-        track({ event: 'revive', level: s.level, revivesUsed: s.revivesUsed }); // T8 埋点
-        s.markOutcome('play');
-        this.panels.hide();
-        this.undimBoard();
-        this.renderHud();
-        this.reconcile();
-        this.toast.show('❤️ 生命恢复 1 颗，继续营业');
-      }),
+      () => {
+        const g0 = this.fxGen;
+        this.ad.showRewarded('hp_revive', () => {
+          if (g0 !== this.fxGen) return;           // 广告期间已重开局：奖励作废
+          if (!s.revive()) return;                 // core 守卫：超限无效（双保险）
+          track({ event: 'revive', level: s.level, revivesUsed: s.revivesUsed }); // T8 埋点
+          s.markOutcome('play');
+          this.panels.hide();
+          this.undimBoard();
+          this.renderHud();
+          this.reconcile();
+          this.toast.show('❤️ 生命恢复 1 颗，继续营业');
+        }, (o) => this.adClosedHint(o));
+        // 未成交 ⇒ 面板与按钮保持原状，玩家可再点（critical 点位不得锁死）
+      },
       () => this.startGame()
     );
   }
@@ -805,7 +976,8 @@ export class GameView extends Component {
     s.markOutcome('win');
     // C3（2026-09-06 21:10）：星级按剩余生命结算（hp 3/2/1 → 3/2/1 星）；
     // 本局复活过（revivesUsed > 0）则封顶 1 星——复活回满心不算无损通关（用户拍板）
-    const stars = s.revivesUsed > 0 ? 1 : Math.max(1, s.hp);
+    this.winStars = s.revivesUsed > 0 ? 1 : Math.max(1, s.hp);
+    const stars = this.winStars;
     track({ event: 'level_win', level: s.level, stars: stars, revivesUsed: s.revivesUsed }); // T8 埋点
     SaveService.saveLevelProgress(s.level);   // 存档：解锁下一关
     SaveService.saveBestStar(s.level, stars); // 存档：每关最佳星级（只增不减）
@@ -814,6 +986,16 @@ export class GameView extends Component {
     // 通关特效：彩带金币雨 + 大飘字 + 面板弹性弹出（Panels.win 内部 winPop）
     this.fx.confetti(this.designWidth(), this.designHeight());
     this.fx.floatText(this.designWorld(0, this.designHeight() * (0.5 - 0.32)), '🎉 牧场清空！', true);
+    this.showWinPanel();
+  }
+
+  /** 只渲染通关面板（**不结算**）—— 2026-09-19 从 win() 抽出，供"营收翻倍"后重弹使用。
+   *  为什么必须拆：旧实现 onDouble 里直接调 `this.win()`，而 win() 首行是
+   *  `if (s.phase === 'win') return;`（2026-09-07 防双结算守卫）⇒ **重弹被静默吃掉**：
+   *  金币 / 存档 / 钱包确实都翻倍了，面板却仍显示旧数字，玩家只看到一句 toast，以为没生效。
+   *  拆分后职责单一：结算路径唯一（win），面板渲染可重复调用（showWinPanel）。 */
+  private showWinPanel(): void {
+    const s = this.session;
     const stats = TYPES
       .filter((t) => s.soldByType[t.id].n > 0)
       .map((t) => ({ id: t.id, n: s.soldByType[t.id].n, rare: s.soldByType[t.id].rare }));
@@ -821,22 +1003,28 @@ export class GameView extends Component {
       level: s.level,
       coins: s.coins,
       ordersDone: s.ordersDone,
-      stars: stars,
+      stars: this.winStars,
       stats: stats,
       doubled: this.doubled,
-      hasNext: s.level < 30,
-      onDouble: () => this.ad.show(() => {
-        // 翻倍：总额翻倍 → 重存结算 → 增量（= 原营收）入钱包 → 重弹面板（原型同序）
-        s.coins *= 2;
-        this.doubled = true;
-        this.coinsShown = s.coins;
-        SaveService.saveResult(this.buildResult());
-        SaveService.addWallet(s.coins / 2);
-        this.win();
-        this.toast.show('营收翻倍！');
-      }),
+      hasNext: s.level < MAX_LEVEL,
+      onDouble: () => {
+        const g0 = this.fxGen;
+        this.ad.showRewarded('win_double', () => {
+          if (g0 !== this.fxGen) return;     // 广告期间已重开局：奖励作废
+          // 翻倍：总额翻倍 → 重存结算 → 增量（= 原营收）入钱包 → 重弹面板（原型同序）
+          s.coins *= 2;
+          this.doubled = true;
+          this.coinsShown = s.coins;
+          SaveService.saveResult(this.buildResult());
+          SaveService.addWallet(s.coins / 2);
+          this.showWinPanel();               // 只重弹面板（不可走 win()——会被 phase 守卫吞掉）
+          this.toast.show('营收翻倍！');
+        }, (o) => this.adClosedHint(o));
+        // 未成交 ⇒ 刻意**不重弹面板**：否则面板会显示"✓ 营收已翻倍"，
+        //   等于把失败当成功写进 UI（旧实现在广告失败时就是这个行为）
+      },
       onNext: () => {
-        this.level = Math.min(30, s.level + 1);
+        this.level = Math.min(MAX_LEVEL, s.level + 1);
         this.startGame();
       },
       onRestart: () => this.startGame(),
@@ -844,8 +1032,10 @@ export class GameView extends Component {
   }
 
   /** 结算快照（SaveService.LastResult），键值口径与原型 buildResult 一致；
-   *  C3（2026-09-06 21:10）：增 stars 字段（默认按当前 hp 换算，翻倍重存时复用 win 已算值） */
-  private buildResult(stars = Math.max(1, this.session.hp)): LastResult {
+   *  C3（2026-09-06 21:10）：增 stars 字段；
+   *  2026-09-19：默认取值由「按当前 hp 换算」改为 `this.winStars` —— 星级口径必须与 win() 一致，
+   *  否则复活过的局（winStars 封顶 1 但 hp 可能 > 1）在"翻倍重存"时会写出不一致的存档星级。 */
+  private buildResult(stars = this.winStars): LastResult {
     const s = this.session;
     const stats: Record<string, number> = {};
     let rare = 0;

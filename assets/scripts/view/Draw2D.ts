@@ -1,12 +1,29 @@
 /* Draw2D：矢量美术库 —— 原型 animals.js 的 SVG（viewBox 0 0 64 64）逐形移植为 Cocos Graphics。
  * 风格公式（与原型一致）：胶囊身体 + 物种符号 + 点状眼 + 深棕硬描边 + 粉彩糖果色。
  * 坐标转换：SVG(左上原点 y 向下) → Cocos(中心原点 y 向上)：X = sx-32, Y = 32-sy。
- * 绘制纪律：每个形状建完路径立即 fill()/stroke()，不跨形状累积路径。 */
-import { Color, Graphics, Label, Node, UITransform } from 'cc';
+ * 绘制纪律：每个形状建完路径立即 fill()/stroke()，不跨形状累积路径。
+ * 修改时间：2026-09-24 13:30 —— 真机文字清晰化：① 新增 setUIFont / LABEL_HIRES，makeLabel 接入
+ *   自带子集字体（ZCOOL KuaiLe，useSystemFont=false；单字重下强制 isBold=false 去掉伪造加粗）；
+ *   ② **2x 高清化**（内部字号/行距 ×2 + 节点 scale 0.5：视觉尺寸逐像素不变、纹理像素翻倍，
+ *   小数字号同时化为整数）；③ 新增 drawStar 矢量五星（子集字体无 ★/☆ 字形，见 Panels 星级行）。
+ *   2026-09-21 23:52 —— 按钮/道具/关卡牌描边去重：粗细 2~3 → 1.2~1.5、颜色降透明
+ *   （用户要求减少整个页面边框，图 2 红圈指向按钮与底部道具栏）。动物/图标深棕描边保留（保辨识度）。
+ *   2026-09-24 18:16 —— 底部道具按钮彻底去描边（drawToolBtn 删 stroke 段；延续 09-21 去重、用户要求"去掉按钮的边框"）。 */
+import { Color, Font, Graphics, Label, Node, UITransform } from 'cc';
 import type { Dir } from '../core/Types';
 
 export const OUT = '#5f4a3a';
 export const EYE = '#3d2f23';
+
+/* 2026-09-24：UIFont —— 真机文字清晰化（ZCOOL KuaiLe OFL 子集资产，assets/resources/fonts/）。
+ * 动机：全部 Label 原走系统字体（makeLabel 默认 useSystemFont=true），真机渲染质量随
+ * 机型/厂商主题字体差异，与编辑器不一致（用户反馈"真机字体模糊"）。
+ * 流程：GameView.start 预加载链先 resources.load 该字体 → setUIFont()；此后创建的所有
+ * Label 一律 useSystemFont=false 用此字体 —— 真机与编辑器渲染同源、锐利稳定。
+ * 缺失字形（emoji 如 ⚠️❤️🎉）由平台字体栈回退绘制，无需子集收录；字体未就绪/加载
+ * 失败时保持系统字体，游戏功能不受影响。 */
+let uiFont: Font | null = null;
+export function setUIFont(f: Font | null): void { uiFont = f; }
 
 /**
  * 矩形圆角 token（设计单位，2026-09-10 统一）——全工程唯一的圆角出处。
@@ -45,16 +62,37 @@ export function newG(name: string, w: number, h = w): { node: Node; g: Graphics 
   return { node, g };
 }
 
+/* 高清渲染系数（2026-09-24 二次调整）：2x 高分纹理 + 节点 scale 1/2。
+ * 动机（真机实测仍模糊后的根因收敛）：整个 UI 树挂在 design 节点上整体 scale=s
+ * （真机 s≈2.9，非整数），Label 文本纹理若按逻辑字号生成，被放大 s 倍采样 → 发虚。
+ * 且全局存在 8.5/9.5/12.5 等小数字号（光栅化 hinting 崩坏）。改为内部 fontSize/
+ * lineHeight ×2、节点 scale 0.5：视觉尺寸与布局逐像素不变，文本纹理像素翻倍，
+ * 小数字号同时化为整数 —— 放大采样后明显更锐。绘制内存增加约 2x 位图，量级很小。 */
+const HIRES_SCALE = 2;
+/** 高清渲染系数（2026-09-24）：makeLabel 内部字号/行距 ×LABEL_HIRES 并节点缩放 1/2，
+ *  视觉尺寸不变、纹理像素翻倍。**外部对 label.lineHeight 的显式赋值也必须乘本系数**，
+ *  否则 node scale 1/2 会让行距视觉减半（Toast 背景高 / 需求行距会塌）。 */
+export const LABEL_HIRES = HIRES_SCALE;
+
 export function makeLabel(text: string, fontSize: number, hex: string, bold = true): { node: Node; label: Label } {
   const node = new Node('label');
   const label = node.addComponent(Label);
   label.string = text;
-  label.fontSize = fontSize;
-  label.lineHeight = Math.round(fontSize * 1.35);
-  label.isBold = bold;
+  label.fontSize = fontSize * HIRES_SCALE;
+  label.lineHeight = Math.round(fontSize * 1.35) * HIRES_SCALE;
+  if (uiFont) {
+    label.font = uiFont;
+    label.useSystemFont = false;
+    // 自定义字体多为单字重（ZCOOL KuaiLe 仅 Regular）：isBold 会触发系统伪造加粗
+    // （synthetic bold），小字号边缘发白发虚 —— 字体生效时强制不用伪粗。
+    label.isBold = false;
+  } else {
+    label.isBold = bold;
+  }
   label.color = col(hex);
   label.horizontalAlign = Label.HorizontalAlign.CENTER;
   label.verticalAlign = Label.VerticalAlign.CENTER;
+  node.setScale(1 / HIRES_SCALE, 1 / HIRES_SCALE, 1);   // 视觉尺寸 = 原设计字号
   return { node, label };
 }
 
@@ -410,6 +448,22 @@ export function drawHeart(g: Graphics, lost: boolean): void {
   quad(g, [[4.5, 12.5], [19.5, 12.5], [12, 21]], fillHex, strokeHex, 1.4);
 }
 
+/** 五角星（win 面板星级，2026-09-22 新增）：实心 = 填充+描边，空心（☆）= 仅描边。
+ *  为什么不用 ★/☆ 字符：接入 ZCOOL KuaiLe 子集字体后该字体无 ★☆ 字形，
+ *  字符版星级会渲染成方块；改矢量绘制与全工程自绘风格一致，观感可控且缩放锐利。 */
+export function drawStar(g: Graphics, r: number, fill: string | null, stroke: string | null, sw = 1.4): void {
+  const ir = r * 0.42;
+  for (let k = 0; k < 10; k++) {
+    const a = -Math.PI / 2 + k * Math.PI / 5;
+    const rr = k % 2 === 0 ? r : ir;
+    const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+    if (k === 0) g.moveTo(x, y); else g.lineTo(x, y);
+  }
+  g.close();
+  if (fill !== null) { g.fillColor = col(fill); g.fill(); }
+  if (stroke !== null) { g.strokeColor = col(stroke); g.lineWidth = sw; g.stroke(); }
+}
+
 export function drawShuffleIcon(g: Graphics): void {
   const S = 64 / 24;
   const px = (v: number) => X(v * S);
@@ -526,8 +580,8 @@ export function drawBtn(g: Graphics, w: number, h: number, kind: 'primary' | 'bl
     g.roundRect(-w / 2, -h / 2, w, h, rr);
     g.fillColor = colA('#ffffff', 235);
     g.fill();
-    g.strokeColor = colA('#ff9d2b', 140);
-    g.lineWidth = 3;
+    g.strokeColor = colA('#ff9d2b', 70);          // 2026-09-21：细描边去重（3→1.5、α140→70）
+    g.lineWidth = 1.5;
     g.stroke();
     return;
   }
@@ -541,8 +595,8 @@ export function drawBtn(g: Graphics, w: number, h: number, kind: 'primary' | 'bl
   g.fillColor = col(top);
   g.fill();
   g.roundRect(-w / 2, -h / 2, w, h - 3, rr);
-  g.strokeColor = col(edge);
-  g.lineWidth = 2;
+  g.strokeColor = colA(edge, 120);                // 2026-09-21：细描边去重（2→1.2、降透明度）
+  g.lineWidth = 1.2;
   g.stroke();
 }
 
@@ -554,13 +608,9 @@ export function drawToolBtn(g: Graphics, w: number, h: number): void {
   g.roundRect(-w / 2, -h / 2 + 2.5, w, h - 3, RADIUS.card);
   g.fillColor = col('#b9a0fb');
   g.fill();
-  g.roundRect(-w / 2, -h / 2, w, h - 3, RADIUS.card);
-  g.strokeColor = col('#7c5cc4');
-  g.lineWidth = 2;
-  g.stroke();
 }
 
-/** HUD 木质关卡牌（d-lv） */
+/** 紫色道具按钮底板（d-tool） */
 export function drawLevelPill(g: Graphics, w: number, h: number): void {
   g.roundRect(-w / 2, -h / 2, w, h, h / 2);
   g.fillColor = col('#c2823f');
@@ -569,7 +619,7 @@ export function drawLevelPill(g: Graphics, w: number, h: number): void {
   g.fillColor = col('#cf9250');
   g.fill();
   g.roundRect(-w / 2, -h / 2, w, h, h / 2);
-  g.strokeColor = col('#8f5a2b');
-  g.lineWidth = 2;
+  g.strokeColor = colA('#8f5a2b', 120);           // 2026-09-21：细描边去重（2→1.2、降透明度）
+  g.lineWidth = 1.2;
   g.stroke();
 }

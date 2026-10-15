@@ -1,5 +1,7 @@
 /* BalanceSim CLI（在工程根目录运行）：
+ * 修改时间：2026-09-24 19:36 —— 新增 `scan <from> <to> [games]` 区间曲线扫描（供 L13-60 调参）。
  *   node --experimental-strip-types --no-warnings --import ./tools/sim/register.mjs tools/sim/run.ts            → L1-L12 曲线扫描（各 400 局）
+ *   node --experimental-strip-types --no-warnings --import ./tools/sim/register.mjs tools/sim/run.ts scan 13 60 400 → 区间曲线扫描
  *   node --experimental-strip-types --no-warnings --import ./tools/sim/register.mjs tools/sim/run.ts 5 1600     → 单关深测
  *   node --experimental-strip-types --no-warnings --import ./tools/sim/register.mjs tools/sim/run.ts verify 100 → core 自身快照对拍
  * （已配 npm scripts：npm run sim / sim:check / sim:verify）
@@ -72,6 +74,12 @@ if (arg1 === 'verify') {
       : '>>> 随机流被扰动：' + fail + ' 关偏离快照！若是预期规则变更，请删除快照文件重新生成。');
     if (fail > 0) process.exitCode = 1;
   }
+} else if (arg1 === 'scan') {
+  // 区间曲线扫描：scan <from> <to> [games]（2026-09-24 新增，供 L13-60 扩展段调参）
+  const from = parseInt(process.argv[3], 10) || 1;
+  const to = parseInt(process.argv[4], 10) || 12;
+  const games = parseInt(process.argv[5], 10) || 400;
+  curveScan(games, from, to);
 } else if (arg1 && parseInt(arg1, 10) >= 1) {
   const lv = parseInt(arg1, 10);
   const games = parseInt(process.argv[3], 10) || 1600;

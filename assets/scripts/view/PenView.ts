@@ -1,7 +1,11 @@
-/* PenView（VIEW）：牧场网格区 —— 草地底板 + 格线 + 动物节点池 + 点格命中。
+/* PenView（VIEW）：牧场网格区 —— 草地底板（无可见辅助线）+ 动物节点池 + 点格命中。
  * core 坐标 (x:0-100, yu:0-100*ASPECT) 拉伸映射到实际矩形，任意屏比完整可见。
  * 节点池按 uid 复用，避免整场重建导致的动画断裂与 GC 压力。
- * 修改时间：2026-09-09 23:35 —— P1.5 网格语义收尾（docs/grid-scheme-review-20260909.md 阶段 C）：
+ * 修改时间：2026-09-21 —— ① 草地渐变 6 段 → **96 段**：6 段时相邻色带单步色差 7.6 级
+ *   （远超平滑渐变 2-3 级的可辨阈值），真机上表现为几条肉眼可见的横向分界线，被误认为
+ *   "格子辅助线"；96 段后单步 ≈0.6 级（低于 1 级量化精度）⇒ 视觉连续。② 底板格线此前
+ *   已移除（见下方注释），格子划分逻辑（onTap/cellUid/cellPitchPx 按 GRID_COLS×GRID_ROWS）不受影响。
+ * 2026-09-09 23:35 —— P1.5 网格语义收尾（docs/grid-scheme-review-20260909.md 阶段 C）：
  *   ① onTap 由「最近圆匹配」改**点格命中**（O(1)、零歧义；紧密排列下贴近动物圆形阈值会点错，
  *     分析文档 §2.4-P4）；以逻辑格位（core col/row）为准，动画位移不影响命中。
  *   ② 底板绘制低透明度格线——向玩家传达"格子规则"，兼作后续编辑器视觉基础。
@@ -15,7 +19,7 @@ import { EventTouch, Node, UITransform, Vec3 } from 'cc';
 import { ASPECT, GRID_COLS, GRID_ROWS } from '../core/Constants';
 import { isBlocked } from '../core/Board';
 import type { Animal, Dir } from '../core/Types';
-import { col, colA, dashedRoundRect, newG, RADIUS } from './Draw2D';
+import { col, dashedRoundRect, newG, RADIUS } from './Draw2D';
 import { AnimalNodeC } from './AnimalNode';
 import { place } from './Ui';
 
@@ -34,43 +38,39 @@ export class PenView {
     this.sz = w * 0.152;
     const { node, g } = newG('pen', w, h);
     this.node = node;
-    // 圆角草地渐变（2026-09-06 10:45 改造）：6 段插值近似 linear-gradient(180deg,#a2dd90,#7cc874)。
-    // Graphics 无单侧圆角，采用"圆角帽 + 中段直条"画法：顶部整宽圆角帽（band0 色）、
-    // 中段 4 条直色带、底部整宽圆角帽（借用倒数第二档色，与末档肉眼无差），
-    // 使农场四角与虚线边界（r=18）一致的圆角收口。
+    // 圆角草地渐变（2026-09-06 10:45 引入，2026-09-21 二次改造）：
+    //   原为 **6 段色带**近似 linear-gradient(180deg,#a2dd90,#7cc874)，Graphics 无渐变填充只能用
+    //   色带逼近。但 6 段意味着每段高 h/6 ≈ 80 设计单位、相邻段色差 = 总色差的 1/5，
+    //   本项目色域 R:0x62→0x7c 即 38 级（221→200 / 144→116 同理）⇒ **单步 7.6 级**，
+    //   远超肉眼在平滑渐变上的可辨阈值（约 2-3 级），于是真机上表现为几条**肉眼可见的横向
+    //   分界线**（用户截图反馈"农场里有横向辅助线"；实测这些线间距 ≈ 牧场高/6 而非格子的
+    //   高/10 —— 佐证是色带边界而非格线）。
+    //   现改为 **96 段**：段高 ≈ 5 设计单位、相邻段色差 = 38/96 ≈ **0.6 级，低于 1 级量化精度**
+    //   ⇒ 数学上不可能看出边界，等同于真正的线性渐变。
+    // Graphics 无单侧圆角，仍用"上下圆角帽 + 中段直条"画法；帽各占 2 段并取该段范围的中点色，
+    //   与相邻色带的色差同为半段量级（≈0.6 级）⇒ 帽与色带之间同样无接缝。
+    const N = 96;
+    const bn = h / N;
+    const capB = 2 * bn;                                       // 上下圆角帽高（≥ RADIUS.panel）
     const c0 = [0xa2, 0xdd, 0x90], c1 = [0x7c, 0xc8, 0x74];
-    const stops = c0.map((_, k) => {
-      const t = k / 5;
+    const shade = (t: number): string => {
       const mix = c0.map((v, i) => Math.round(v + (c1[i] - v) * t));
       return '#' + mix.map(v => v.toString(16).padStart(2, '0')).join('');
-    });
-    const b = h / 6;
-    g.roundRect(0, -2 * b, w, 2 * b, RADIUS.panel);            // 顶部圆角帽
-    g.fillColor = col(stops[0]);
+    };
+    g.roundRect(0, -capB, w, capB, RADIUS.panel);              // 顶部圆角帽（覆盖第 0~1 段）
+    g.fillColor = col(shade(1 / N));
     g.fill();
-    for (let k = 1; k <= 4; k++) {                   // 中段直色带
-      g.rect(0, -(k + 1) * b - 0.7, w, b + 0.7);
-      g.fillColor = col(stops[k]);
+    for (let k = 2; k <= N - 3; k++) {                         // 中段直色带（逐段取中点色）
+      g.rect(0, -(k + 1) * bn - 0.7, w, bn + 0.7);             // 多铺 0.7 防相邻段之间露缝
+      g.fillColor = col(shade((k + 0.5) / N));
       g.fill();
     }
-    g.roundRect(0, -h, w, 2 * b, RADIUS.panel);      // 底部圆角帽（stops[4] ≈ stops[5]）
-    g.fillColor = col(stops[4]);
+    g.roundRect(0, -h, w, capB, RADIUS.panel);                 // 底部圆角帽（覆盖第 N-2~N-1 段）
+    g.fillColor = col(shade((N - 1) / N));
     g.fill();
-    // 格线（P1.5·阶段C4，2026-09-09）：低透明度白色网格线（6×10），画在渐变之上、
-    // 虚线边界之下——向玩家传达"格子规则"，兼作后续关卡编辑器（PRD 5.1 Phase B）视觉基础。
-    g.strokeColor = colA('#ffffff', 28);
-    g.lineWidth = 1;
-    for (let c = 1; c < GRID_COLS; c++) {
-      const x = (c / GRID_COLS) * w;
-      g.moveTo(x, 0);
-      g.lineTo(x, -h);
-    }
-    for (let r = 1; r < GRID_ROWS; r++) {
-      const y = -(r / GRID_ROWS) * h;
-      g.moveTo(0, y);
-      g.lineTo(w, y);
-    }
-    g.stroke();
+    // 格线已移除（2026-09-21 用户要求）：P1.5·C4 曾画低透明度白色网格线（6×10）向玩家
+    // 传达"格子规则"，现玩家侧不可见（格子划分逻辑不变：onTap/cellUid/cellPitchPx 仍按
+    // GRID_COLS×GRID_ROWS 计算，仅不再画辅助线）。
     // 顶部高光椭圆已移除（2026-09-08 用户要求）：原型 radial-gradient 装饰，
     // 在顶视角实拍图美术下表现为「白色半透明大椭圆」违和残留。
     const ut = node.getComponent(UITransform)!;

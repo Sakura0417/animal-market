@@ -1,5 +1,10 @@
 /* 全局配置常量（单一真相源，业务逻辑禁止硬编码数值）
- * 修改时间：2026-09-10 21:41 —— ① CRANE_MAX 3→2 且取消"首次免费"，吊车与翻转/洗牌同构；
+ * 修改时间：2026-09-26 23:30 —— 新增自动挪窝 B 档开关 AUTO_RESHUF_ENABLED / AUTO_RESHUF_MAX
+ *   （三道具用尽 + 全场互锁 → 免费打散重排一次，防死锁挫败；见 Constants.ts 内注释）。
+ * 2026-09-24 19:36 —— ① 新增 MAX_LEVEL = 60 单一真相源（收编 LevelCfg/GameSession/
+ *   SaveService/GameView 四处硬编码的 30）；② ENABLE_FARM_ROCKS 置 true（关卡扩至 60 时
+ *   启用石头作为扩展段难度变量，L1-12 仍恒 0 以保持种子对拍）。
+ * 2026-09-10 21:41 —— ① CRANE_MAX 3→2 且取消"首次免费"，吊车与翻转/洗牌同构；
  *   ② 新增 REVIVE_HP = 1（广告复活由回满 3 心改为回 1 颗）。
  * 2026-09-09 23:35 —— P1.5 紧密化收尾：① R（散点时代 core 半径）与 CONTACT_OVERLAP
  *   退役——相邻格遮挡下接触距离 = 格距 − 精灵宽（常量公式，view 层 cellPitchPx 提供），
@@ -15,6 +20,15 @@
  *   21:10 —— 新增 REVIVE_MAX = 2（PRD 2.0 P5/C5）；19:47 —— ① CRANE_MAX 4→3；② 新增 DEFAULT_SEED 哨兵 */
 import type { AnimalType, Dir } from './Types';
 import { ANIMAL_SCHEMA } from './AnimalSchema';
+
+/** 关卡数上限（2026-09-24 新增，单一真相源）：
+ *  原先 30 这个数字散落在 LevelCfg / GameSession / SaveService / GameView 四处硬编码，
+ *  违反"业务逻辑禁止硬编码数值"约定，且扩展关卡数必须四改（易漏）。
+ *  现收编为唯一常量——扩展关卡只改这里。
+ *  消费方：LevelCfg.levelCfg（钳制入参）、GameSession.start（钳制入参）、
+ *  SaveService（进度/星级钳制）、GameView（hasNext 判定 + 下一关推进）。
+ *  ⚠️ 改动本值不影响 L1-12 的配置与随机流，故无需重建 baseline-snapshot。 */
+export const MAX_LEVEL = 60;
 
 export const SLOT_TOTAL = 5;
 export const SLOT_OPEN = 3;
@@ -36,6 +50,18 @@ export const REVIVE_MAX = 2;
 export const REVIVE_HP = 1;
 export const FLIP_MAX = 2;
 export const SHUF_MAX = 2;
+
+/** 自动挪窝兜底开关（2026-09-26 新增，B 档）。
+ *  - `true`（默认）：全场互锁且吊车/转身/挪窝三道具**全部用尽**时，免费打散重排一次
+ *    （每局上限 AUTO_RESHUF_MAX），把"硬死锁"降级为"免费再试一次"，消除碰撞扣心折磨。
+ *  - `false`：保持现状——互锁只能靠道具或碰撞扣心硬扛（模拟器模拟为 faillock 判负）。
+ *  触发语义（B 档，用户拍板）：道具链正常优先，自动挪窝只做极端兜底，不侵蚀道具/广告价值。
+ *  ⚠️ 该开关与 AUTO_RESHUF_MAX 都会**改变随机流**（reflow 消费 rng）⇒ 任何调整
+ *    必须重建 `tools/sim/baseline-snapshot.json`（与 ENABLE_FARM_ROCKS 同款纪律）。
+ *    验证：npm run sim:verify 出现预期偏离 → 备份 + 删 + 重建 + DEVLOG 说明。 */
+export const AUTO_RESHUF_ENABLED = true;
+/** 每局自动挪窝次数上限（2026-09-26 新增，B 档：每局限 1 次，防刷盘与无限循环）。 */
+export const AUTO_RESHUF_MAX = 1;
 
 /** 碰撞接触动画参数（PRD 2.0 D2，2026-09-06 22:25 新增；2026-09-09 P1.5·C5 更新）。
  *  P1.5 起：接触距离 = 格距 − 精灵显示宽（相邻格遮挡下的常量公式，PenView.cellPitchPx
@@ -70,14 +96,19 @@ export const DEFAULT_SEED = -1;
  *  ⚠️ 调整会改变随机流（每次 makeOrder 多消费 1 个 rng）⇒ 需重建 tools/sim/baseline-snapshot.json。 */
 export const ORDER_QTY3_P = 0.2;
 
-/** 农场随机石头生成开关（2026-09-07 新增，**默认关闭**）。
- *  - `false`（默认）：所有关卡岩石数 = 0，农场开局不生成石头。
- *  - `true`：按 `core/LevelCfg.ts` 原有曲线随机落岩石（数量公式、落位规则、
- *    相邻格遮挡语义、互锁环拒绝采样全部不变，即开启后行为与改造前逐帧一致）。
+/** 农场随机石头生成开关（2026-09-07 新增；2026-09-24 关卡扩展至 60 时**打开**）。
+ *  - `false`：所有关卡岩石数 = 0，农场开局不生成石头。
+ *  - `true`（当前）：按 `core/LevelCfg.ts` 的岩石曲线随机落岩石（数量公式、落位规则、
+ *    相邻格遮挡语义、互锁环拒绝采样全部不变）。
  *  单一真相源：只有 `LevelCfg.levelCfg()` 读取本开关决定 `LevelConfig.rocks`，
  *  业务层（GameSession.generate 等）继续只认 `cfg.rocks`，禁止再写第二处判断。
- *  ⚠️ 该开关会改变随机流（gridLayout 取格数变化）⇒ 切换后需重建 tools/sim/baseline-snapshot.json。 */
-export const ENABLE_FARM_ROCKS = false;
+ *  ⚠️ 该开关会改变随机流（clusterLayout 取格数变化）⇒ 切换后**理论**需重建
+ *    `tools/sim/baseline-snapshot.json`。但 2026-09-24 打开时同步把岩石曲线定义为
+ *    **L1-12 恒为 0**（`n <= 12 ? 0 : …`），而种子对拍只覆盖 L1-12
+ *    （tools/sim/run.ts 的 verify 分支硬编码 1..12）⇒ 对拍区内 rocks 恒 0、
+ *    随机流零扰动 ⇒ `sim:verify` 仍应 12/12，**无需重建快照**。
+ *    验证命令：npm run sim:verify。 */
+export const ENABLE_FARM_ROCKS = true;
 
 export const ASPECT = 1.25;
 
