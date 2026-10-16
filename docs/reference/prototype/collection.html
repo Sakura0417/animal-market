@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>动物图鉴 · 动物集市</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+/* ============================================================
+ * 动物图鉴页专属布局（col- 前缀）· 颜色/字号/圆角一律用 token
+ * ============================================================ */
+.col-body { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 0 16px 20px; }
+
+/* 入场 staggered 动画 */
+@keyframes col-in { from { opacity: 0; transform: translateY(12px); } }
+.col-body > * { animation: col-in .45s ease both; }
+.col-body > *:nth-child(1) { animation-delay: .04s; }
+.col-body > *:nth-child(2) { animation-delay: .1s; }
+.col-body > *:nth-child(3) { animation-delay: .16s; }
+.col-body > *:nth-child(4) { animation-delay: .22s; }
+.col-body > *:nth-child(5) { animation-delay: .28s; }
+.col-body > *:nth-child(6) { animation-delay: .34s; }
+.col-grid .col-card { animation: col-in .4s ease both; }
+.col-grid .col-card:nth-child(1) { animation-delay: .3s; }
+.col-grid .col-card:nth-child(2) { animation-delay: .34s; }
+.col-grid .col-card:nth-child(3) { animation-delay: .38s; }
+.col-grid .col-card:nth-child(4) { animation-delay: .42s; }
+.col-grid .col-card:nth-child(5) { animation-delay: .46s; }
+.col-grid .col-card:nth-child(6) { animation-delay: .5s; }
+
+/* 1) 进度 + 集齐奖励卡 */
+.col-progress-top { display: flex; align-items: center; gap: 9px; }
+.col-progress-top > .ic { color: var(--gold); }
+.col-progress-top b { flex: 1; font-size: 15px; }
+.col-progress-top .num { font-size: 20px; font-weight: 800; color: var(--gold); }
+.col-progress-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.col-progress-bar .bar { flex: 1; }
+.col-progress-sub { font-size: 12px; color: var(--muted); margin-top: 9px; }
+.col-rewards { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
+.col-reward {
+  display: flex; align-items: center; gap: 9px;
+  background: var(--bg3); border: 1px solid var(--rule);
+  border-radius: 11px; padding: 9px 12px;
+}
+.col-reward .ic { flex: none; color: var(--muted); }
+.col-reward-txt { flex: 1; min-width: 0; }
+.col-reward-txt b { display: block; font-size: 13.5px; }
+.col-reward-txt span { display: block; font-size: 11.5px; color: var(--muted); }
+.col-reward.is-near { border-color: rgba(255, 157, 43, .55); }
+.col-reward.is-near .ic { color: var(--gold); }
+.col-reward.is-done .ic { color: var(--green); }
+
+/* 2) 图鉴卡网格 */
+.col-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0; }
+.col-card {
+  background: var(--bg2); border: 1px solid var(--rule);
+  border-radius: 14px; padding: 13px 6px 11px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  text-align: center; cursor: pointer; color: inherit;
+  transition: border-color .15s, transform .1s;
+}
+.col-card:hover { border-color: rgba(88, 192, 108, .7); }
+.col-card:active { transform: scale(.96); }
+.col-face { position: relative; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; line-height: 1; filter: drop-shadow(0 3px 4px rgba(120, 150, 180, .35)); }
+.col-face .am-animal { width: 46px; height: 46px; }
+.col-card b { font-size: 13.5px; line-height: 1.3; }
+.col-card small { font-size: 11px; color: var(--muted); }
+.col-card small .num { font-size: 11.5px; }
+
+/* 闪光卡：金光描边 */
+.col-card--rare {
+  border-color: rgba(255, 184, 0, .6);
+  background: linear-gradient(165deg, #fff8e0, #fffdf6 60%), var(--bg2);
+}
+.col-card--rare .col-face { filter: drop-shadow(0 0 7px rgba(255, 184, 0, .8)) drop-shadow(0 3px 4px rgba(120, 150, 180, .3)); }
+.col-card--rare b { color: #d99a00; }
+
+/* 未点亮卡：压灰 + 角标锁 */
+.col-card--locked { opacity: .62; }
+.col-card--locked .col-face { filter: grayscale(1) brightness(.8); }
+.col-lock {
+  position: absolute; right: -7px; bottom: -3px;
+  width: 14px; height: 14px; color: var(--muted);
+  background: var(--bg2); border-radius: 50%; padding: 2px;
+}
+.col-card--hidden .col-face .ic { width: 30px; height: 30px; color: var(--muted); }
+</style>
+</head>
+<body data-page="collection">
+  <aside class="rail">
+    <div class="rail-brand">
+      <span class="rail-logo">🐔</span>
+      <div><b>动物集市</b><i>高保真原型 V1.4</i></div>
+    </div>
+    <nav class="rail-nav">
+      <a data-nav="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页 · 农场</span></a>
+      <a data-nav="game" href="game.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg><span>对局 · 核心玩法</span></a>
+      <a data-nav="settlement" href="settlement.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span>过关结算</span></a>
+      <a data-nav="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>动物图鉴</span></a>
+      <a data-nav="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场升级</span></a>
+      <a data-nav="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>每日挑战</span></a>
+      <a data-nav="signin" href="signin.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg><span>每日签到</span></a>
+    </nav>
+    <p class="rail-note">依据 PRD V1.0 · 亮色卡通 · 离线可开</p>
+  </aside>
+  <main class="stage">
+    <div class="phone">
+      <div class="statusbar"><span class="sb-time">09:47</span><span class="sb-icons">▮▮▮ ᯤ 84%</span></div>
+      <div class="screen screen--collection">
+
+        <header class="topbar">
+          <div class="tb-coins"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg><b class="num" data-am-coins>0</b></div>
+          <a class="tb-mini" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>图鉴 11/15</span></a>
+        </header>
+
+        <div class="col-body">
+
+          <!-- 1 · 进度 + 集齐奖励 -->
+          <section class="card">
+            <div class="col-progress-top">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+              <b>图鉴进度</b>
+              <b class="num">11/15</b>
+            </div>
+            <div class="col-progress-bar">
+              <div class="bar"><div class="bar-fill" style="width:73%"></div></div>
+            </div>
+            <p class="col-progress-sub">基础 <span class="num">6/6</span> · 闪光 <span class="num">5/6</span> · 隐藏 <span class="num">0/3</span></p>
+            <div class="col-rewards">
+              <div class="col-reward is-near">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3.09 8.26L22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <div class="col-reward-txt"><b>集齐基础 12 张</b><span>解锁豪华农场皮肤</span></div>
+                <span class="chip chip--gold">还差 1 张</span>
+              </div>
+              <div class="col-reward">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <div class="col-reward-txt"><b>集齐全部 15 张</b><span>点亮夜市大亨称号</span></div>
+                <span class="chip">未达成</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 2 · 基础动物 -->
+          <div class="sec-title"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>基础动物</span><small>售出即点亮</small></div>
+          <div class="col-grid" id="colNormal"></div>
+
+          <!-- 3 · 闪光变种 -->
+          <div class="sec-title"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span>闪光变种</span><small>3 倍价 · 随机混入</small></div>
+          <div class="col-grid" id="colRare"></div>
+
+          <!-- 4 · 隐藏稀客 -->
+          <div class="sec-title"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>隐藏稀客</span><small>第 8 关后出现</small></div>
+          <div class="col-grid" id="colHidden"></div>
+
+        </div>
+
+        <nav class="tabbar">
+          <a data-tab="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页</span></a>
+          <a data-tab="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>图鉴</span></a>
+          <a data-tab="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场</span></a>
+          <a data-tab="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>挑战</span></a>
+        </nav>
+
+      </div>
+    </div>
+  </main>
+  <script src="mock.js"></script>
+  <script src="api.js"></script>
+  <script src="animals.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var AM = window.AM;
+
+    var LOCK_SM = '<svg class="ic col-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+    var LOCK_LG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+    function esc(s) { return String(s); }
+
+    /* ---- 基础动物：全部解锁（n>0） ---- */
+    var normalEl = document.getElementById('colNormal');
+    var htmlN = '';
+    AM.DB.animals.forEach(function (t) {
+      var c = AM.DB.collection[t.id];
+      htmlN +=
+        '<button type="button" class="col-card" data-tip="' + esc(t.name) + ' · 单价 ' + t.price + ' 金币 · 累计售出 ' + c.n + ' 只">' +
+          '<span class="col-face">' + AM.animals.svg(t.id) + '</span>' +
+          '<b>' + esc(t.name) + '</b>' +
+          '<small>售出 <span class="num">' + c.n + '</span> 只</small>' +
+        '</button>';
+    });
+    normalEl.innerHTML = htmlN;
+
+    /* ---- 闪光变种：rare>0 解锁，否则锁卡 ---- */
+    var rareEl = document.getElementById('colRare');
+    var htmlR = '';
+    AM.DB.animals.forEach(function (t) {
+      var c = AM.DB.collection[t.id];
+      if (c.rare > 0) {
+        htmlR +=
+          '<button type="button" class="col-card col-card--rare" data-tip="闪光' + esc(t.name) + ' · 3 倍价收购 · 累计售出 ' + c.rare + ' 只">' +
+            '<span class="col-face">' + AM.animals.svg(t.id, { rare: true }) + '</span>' +
+            '<b>闪光' + esc(t.name) + '</b>' +
+            '<small>售出 <span class="num">' + c.rare + '</span> 只</small>' +
+          '</button>';
+      } else {
+        htmlR +=
+          '<button type="button" class="col-card col-card--locked" data-tip="卖出一只闪光' + esc(t.name) + '就点亮啦，闪光会随机混进牧场">' +
+            '<span class="col-face">' + AM.animals.svg(t.id) + LOCK_SM + '</span>' +
+            '<b>闪光' + esc(t.name) + '</b>' +
+            '<small>待点亮</small>' +
+          '</button>';
+      }
+    });
+    rareEl.innerHTML = htmlR;
+
+    /* ---- 隐藏稀客：全部未解锁 ---- */
+    var hiddenEl = document.getElementById('colHidden');
+    var htmlH = '';
+    AM.DB.hidden.forEach(function (t) {
+      htmlH +=
+        '<button type="button" class="col-card col-card--locked col-card--hidden" data-tip="第 8 关后有 3% 概率出现在牧场，收一只就点亮">' +
+          '<span class="col-face">' + LOCK_LG + '</span>' +
+          '<b>？？？</b>' +
+          '<small>第 8 关后出现</small>' +
+        '</button>';
+    });
+    hiddenEl.innerHTML = htmlH;
+
+    /* ---- 点击卡片：toast 展示详情 ---- */
+    document.querySelectorAll('.col-card').forEach(function (card) {
+      card.addEventListener('click', function () {
+        AM.toast(card.getAttribute('data-tip'));
+      });
+    });
+  })();
+  </script>
+</body>
+</html>

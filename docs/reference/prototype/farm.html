@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>农场升级 · 动物集市</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+/* ============================================================
+ * 农场升级页专属布局（farm- 前缀）· 颜色/字号/圆角一律用 token
+ * ============================================================ */
+.farm-body { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 0 16px 20px; }
+.farm-body .rows { padding: 0; }
+
+/* 入场 staggered 动画 */
+@keyframes farm-in { from { opacity: 0; transform: translateY(12px); } }
+.farm-body > * { animation: farm-in .45s ease both; }
+.farm-body > *:nth-child(1) { animation-delay: .04s; }
+.farm-body > *:nth-child(2) { animation-delay: .1s; }
+.farm-body > *:nth-child(3) { animation-delay: .16s; }
+.farm-body > *:nth-child(4) { animation-delay: .22s; }
+.farm-rows .row { animation: farm-in .4s ease both; }
+.farm-rows .row:nth-child(1) { animation-delay: .26s; }
+.farm-rows .row:nth-child(2) { animation-delay: .3s; }
+.farm-rows .row:nth-child(3) { animation-delay: .34s; }
+.farm-rows .row:nth-child(4) { animation-delay: .38s; }
+.farm-rows .row:nth-child(5) { animation-delay: .42s; }
+.farm-rows .row:nth-child(6) { animation-delay: .46s; }
+.farm-rows .row:nth-child(7) { animation-delay: .5s; }
+.farm-rows .row:nth-child(8) { animation-delay: .54s; }
+
+/* 1) 农场预览条 */
+.farm-preview-strip {
+  display: grid; grid-template-columns: repeat(8, 1fr); gap: 7px;
+  padding: 6px 2px 2px;
+}
+.farm-slot {
+  aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .72);
+  border: 1px dashed #c6d2da;
+  border-radius: 11px;
+  font-size: 22px; line-height: 1;
+  transition: border-color .3s, background .3s;
+}
+.farm-slot.is-owned {
+  border-style: solid; border-color: rgba(88, 192, 108, .75);
+  background: #eef9ef;
+  filter: drop-shadow(0 3px 4px rgba(90, 130, 95, .35));
+  animation: farmPop .45s ease;
+}
+@keyframes farmPop { 0% { transform: scale(.3); opacity: 0; } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+.farm-preview-sub { font-size: 12px; color: var(--muted); margin-top: 11px; }
+
+/* 2) 加成卡 */
+.farm-bonus-top { display: flex; align-items: center; gap: 10px; }
+.farm-bonus-top > .ic { color: var(--green); flex: none; }
+.farm-bonus-txt { flex: 1; min-width: 0; }
+.farm-bonus-txt b { display: block; font-size: 15px; }
+.farm-bonus-txt p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.farm-bonus-num { font-size: 26px; font-weight: 800; color: var(--green); line-height: 1; }
+.farm-bonus-bar { display: flex; align-items: center; gap: 10px; margin-top: 13px; }
+.farm-bonus-bar .bar { flex: 1; }
+.farm-bonus-sub { font-size: 12px; color: var(--muted); margin-top: 9px; }
+
+/* 3) 赚钱提示条 */
+.farm-tip { display: flex; align-items: center; gap: 12px; transition: border-color .15s; }
+.farm-tip > .ic:first-child { color: var(--gold); }
+.farm-tip:active { transform: scale(.99); }
+.farm-tip-txt { flex: 1; min-width: 0; }
+.farm-tip-txt b { display: block; font-size: 14.5px; }
+.farm-tip-txt span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.farm-tip-arrow { color: var(--muted); transform: rotate(180deg); transition: color .15s, transform .15s; }
+.farm-tip:hover { border-color: rgba(255, 157, 43, .6); }
+.farm-tip:hover .farm-tip-arrow { color: var(--gold); transform: rotate(180deg) translateX(3px); }
+
+/* 4) 商店行 */
+.farm-face { width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--bg3); border: 1px solid var(--rule); border-radius: 12px; font-size: 26px; line-height: 1; }
+.farm-item .grow b { display: flex; align-items: center; gap: 7px; }
+.farm-item.is-owned .farm-face { border-color: rgba(88, 192, 108, .6); background: #eef9ef; }
+.farm-price { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-num); font-size: 14px; font-weight: 700; color: var(--gold-deep); flex: none; }
+.farm-price .ic { width: 14px; height: 14px; }
+.farm-price.is-poor { color: var(--danger); opacity: .85; }
+.farm-buy { min-width: 74px; flex: none; }
+</style>
+</head>
+<body data-page="farm">
+  <aside class="rail">
+    <div class="rail-brand">
+      <span class="rail-logo">🐔</span>
+      <div><b>动物集市</b><i>高保真原型 V1.4</i></div>
+    </div>
+    <nav class="rail-nav">
+      <a data-nav="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页 · 农场</span></a>
+      <a data-nav="game" href="game.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg><span>对局 · 核心玩法</span></a>
+      <a data-nav="settlement" href="settlement.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span>过关结算</span></a>
+      <a data-nav="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>动物图鉴</span></a>
+      <a data-nav="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场升级</span></a>
+      <a data-nav="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>每日挑战</span></a>
+      <a data-nav="signin" href="signin.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg><span>每日签到</span></a>
+    </nav>
+    <p class="rail-note">依据 PRD V1.0 · 亮色卡通 · 离线可开</p>
+  </aside>
+  <main class="stage">
+    <div class="phone">
+      <div class="statusbar"><span class="sb-time">09:47</span><span class="sb-icons">▮▮▮ ᯤ 84%</span></div>
+      <div class="screen screen--farm">
+
+        <header class="topbar">
+          <div class="tb-coins"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg><b class="num" data-am-coins>0</b></div>
+          <a class="tb-mini" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>图鉴 11/15</span></a>
+        </header>
+
+        <div class="farm-body">
+
+          <!-- 1 · 农场预览条 -->
+          <section class="card">
+            <div class="farm-preview-strip" id="farmStrip"></div>
+            <p class="farm-preview-sub" id="farmPreviewSub"></p>
+          </section>
+
+          <!-- 2 · 农场加成 -->
+          <section class="card card--cta">
+            <div class="farm-bonus-top">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg>
+              <div class="farm-bonus-txt">
+                <b>农场加成</b>
+                <p>每件装饰：初始解锁概率 +2%</p>
+              </div>
+              <b class="farm-bonus-num num" id="farmBonusNum">+4%</b>
+            </div>
+            <div class="farm-bonus-bar">
+              <div class="bar"><div class="bar-fill bar-fill--green" id="farmBonusBar" style="width:25%"></div></div>
+            </div>
+            <p class="farm-bonus-sub" id="farmBonusSub">已建成 2/8 件</p>
+          </section>
+
+          <!-- 3 · 赚钱提示 -->
+          <a class="card farm-tip" href="game.html">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35a1 1 0 0 0-.78-.38H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+            <div class="farm-tip-txt">
+              <b>金币不够？</b>
+              <span>去夜市拉几车，卖动物回来接着盖</span>
+            </div>
+            <svg class="ic farm-tip-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          </a>
+
+          <!-- 4 · 商店 -->
+          <div class="sec-title"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场商店</span><small>8 件装饰</small></div>
+          <div class="rows farm-rows" id="farmShop"></div>
+
+        </div>
+
+        <nav class="tabbar">
+          <a data-tab="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页</span></a>
+          <a data-tab="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>图鉴</span></a>
+          <a data-tab="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场</span></a>
+          <a data-tab="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>挑战</span></a>
+        </nav>
+
+      </div>
+    </div>
+  </main>
+  <script src="mock.js"></script>
+  <script src="api.js"></script>
+  <script src="animals.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var AM = window.AM;
+
+    var CHECK_SM = '<svg class="ic ic--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    var COINS_SM = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>';
+
+    var stripEl = document.getElementById('farmStrip');
+    var shopEl = document.getElementById('farmShop');
+    var owned = AM.wallet.data.owned;
+
+    /* ---- 预览条：8 格，已建成的放装饰 ---- */
+    function renderStrip() {
+      var html = '';
+      AM.DB.decorations.forEach(function (d) {
+        var has = owned.indexOf(d.id) >= 0;
+        html += '<span class="farm-slot' + (has ? ' is-owned' : '') + '" title="' + (has ? d.name : '空地') + '">' + (has ? d.emoji : '') + '</span>';
+      });
+      stripEl.innerHTML = html;
+      document.getElementById('farmPreviewSub').innerHTML =
+        owned.length >= AM.DB.decorations.length
+          ? '农场全盖满了，灯火通明，好一个夜市大庄园'
+          : '空地上还能盖 <span class="num">' + (AM.DB.decorations.length - owned.length) + '</span> 件，接着攒钱';
+    }
+
+    /* ---- 加成卡 ---- */
+    function renderBonus() {
+      var n = owned.length, total = AM.DB.decorations.length;
+      document.getElementById('farmBonusNum').textContent = '+' + (n * 2) + '%';
+      document.getElementById('farmBonusBar').style.width = (n / total * 100) + '%';
+      document.getElementById('farmBonusSub').innerHTML = '已建成 <span class="num">' + n + '</span>/' + total + ' 件';
+    }
+
+    /* ---- 商店行 ---- */
+    function renderShop() {
+      var coins = AM.wallet.coins;
+      var html = '';
+      AM.DB.decorations.forEach(function (d) {
+        var has = owned.indexOf(d.id) >= 0;
+        html += '<div class="row farm-item' + (has ? ' is-owned' : '') + '">' +
+          '<span class="farm-face">' + d.emoji + '</span>' +
+          '<div class="grow"><b>' + d.name + '</b><span class="sub">' + d.desc + '</span></div>' +
+          (has
+            ? '<span class="chip chip--green">' + CHECK_SM + '已建成</span>'
+            : '<span class="farm-price' + (coins < d.price ? ' is-poor' : '') + '">' + COINS_SM + d.price + '</span>' +
+              '<button type="button" class="btn btn--sm farm-buy" data-id="' + d.id + '">建造</button>') +
+        '</div>';
+      });
+      shopEl.innerHTML = html;
+    }
+
+    function renderAll() { renderStrip(); renderBonus(); renderShop(); }
+    renderAll();
+
+    /* ---- 购买：走接口桩，成功后整页状态刷新 ---- */
+    shopEl.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('.farm-buy') : null;
+      if (!btn || btn.disabled) return;
+      var id = btn.getAttribute('data-id');
+      btn.disabled = true;
+      btn.classList.add('is-disabled');
+      btn.textContent = '建造中';
+      AM.api.buyDecoration(id).then(function (res) {
+        AM.toast(res.msg);
+        renderAll();
+      });
+    });
+  })();
+  </script>
+</body>
+</html>

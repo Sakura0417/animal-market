@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>过关结算 · 动物集市</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+/* ===== 页面专属布局：过关结算（set-*） ===== */
+.set-top { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; }
+.set-back {
+  display: inline-flex; align-items: center; gap: 5px; min-width: 76px;
+  font-size: 13px; color: var(--muted); transition: color .15s;
+}
+.set-back:hover { color: var(--green); }
+.set-back .ic { width: 17px; height: 17px; }
+.set-title { flex: 1; text-align: center; font-size: 15px; }
+.set-back-sp { min-width: 76px; }
+
+.set-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 4px 16px 24px;
+}
+.set-body::-webkit-scrollbar { width: 0; }
+
+/* 加载骨架 */
+.set-skel { display: flex; flex-direction: column; align-items: center; gap: 15px; padding: 30px 0 10px; }
+.skl { background: var(--bg3); border-radius: 12px; animation: setPulse 1.2s ease-in-out infinite; }
+.skl--emoji { width: 46px; height: 46px; border-radius: 50%; }
+.skl--title { width: 142px; height: 24px; }
+.skl--sub { width: 184px; height: 13px; }
+.skl--stars { width: 186px; height: 36px; border-radius: 999px; }
+.skl--num { width: 150px; height: 46px; }
+.skl--card { width: 100%; height: 62px; }
+.skl--chips { width: 100%; height: 27px; border-radius: 999px; }
+.skl--btn { width: 100%; height: 58px; border-radius: 13px; }
+.set-skel > *:nth-child(2) { animation-delay: .1s; }
+.set-skel > *:nth-child(3) { animation-delay: .2s; }
+.set-skel > *:nth-child(4) { animation-delay: .3s; }
+.set-skel > *:nth-child(5) { animation-delay: .4s; }
+.set-skel > *:nth-child(6) { animation-delay: .5s; }
+.set-skel > *:nth-child(7) { animation-delay: .6s; }
+.set-skel > *:nth-child(8) { animation-delay: .7s; }
+@keyframes setPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* 收市头图 */
+.set-head { text-align: center; padding-top: 6px; }
+.set-head-emoji { font-size: 32px; line-height: 1; filter: drop-shadow(0 3px 5px rgba(255, 157, 43, .45)); }
+.set-head h2 { font-size: 24px; margin-top: 8px; }
+.set-head p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+/* 星级 */
+.set-stars { display: flex; justify-content: center; gap: 12px; margin: 2px 0; }
+.set-star { width: 36px; height: 36px; color: var(--muted); }
+.set-star.is-got {
+  color: var(--gold); fill: var(--gold);
+  filter: drop-shadow(0 2px 4px rgba(255, 157, 43, .6));
+  animation: setStarIn .55s cubic-bezier(.34, 1.56, .64, 1) both;
+}
+.set-star.is-got:nth-child(2) { animation-delay: .14s; }
+.set-star.is-got:nth-child(3) { animation-delay: .28s; }
+@keyframes setStarIn { 0% { transform: scale(.2) rotate(-18deg); opacity: 0; } 70% { transform: scale(1.18); } 100% { transform: scale(1); opacity: 1; } }
+.set-star-note { text-align: center; font-size: 12px; color: var(--muted); }
+.set-star-note .num { color: var(--ink); }
+
+/* 营收 */
+.set-revenue { text-align: center; padding: 2px 0; }
+.set-revenue > small { display: block; font-size: 12px; color: var(--muted); letter-spacing: .08em; }
+.set-rev-num {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 4px; font-weight: 800; color: var(--gold-deep);
+  filter: drop-shadow(0 2px 4px rgba(255, 157, 43, .35));
+}
+.set-rev-coin { font-size: 34px; line-height: 1; display: inline-flex; align-items: center; }
+.set-rev-coin .am-coin { width: 36px; height: 36px; }
+.set-rev-num b { font-size: 44px; line-height: 1.1; }
+
+/* 最贵成交 */
+.set-best { display: flex; align-items: center; gap: 12px; }
+.set-best-emoji { font-size: 32px; line-height: 1; filter: drop-shadow(0 2px 4px rgba(255, 184, 0, .75)); }
+.set-best-emoji .am-animal { display: block; width: 46px; height: 46px; }
+.set-best-txt { flex: 1; min-width: 0; }
+.set-best-txt b { display: block; font-size: 15px; }
+.set-best-txt span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.set-best-val { font-size: 20px; color: var(--gold); }
+
+/* 售出统计 */
+.set-stats-wrap { text-align: center; }
+.set-stats-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.set-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.set-stats .chip { font-size: 12px; padding: 3px 10px; }
+.set-stats .chip .am-animal { display: inline-block; width: 20px; height: 20px; vertical-align: -5px; margin-right: 2px; }
+
+/* 双倍营收 / 分享 / 广告位 / 底部按钮 */
+.set-double { display: flex; flex-direction: column; gap: 0; width: 100%; padding: 13px 16px; }
+.set-dbl-main { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; }
+.set-sharebtn { width: 100%; }
+.set-banner {
+  flex: none; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg2); border: 1px dashed var(--rule); border-radius: 12px;
+}
+.set-actions { display: flex; gap: 10px; }
+.set-actions .btn { flex: 1; }
+
+/* 分享卡模态 */
+.set-sharecard {
+  background: #fffaf0; border: 1px solid rgba(255, 157, 43, .55);
+  border-radius: 14px; padding: 16px 14px 12px; margin-bottom: 14px;
+  text-align: center;
+}
+.set-sharecard > small { display: block; font-size: 12px; color: var(--muted); }
+.set-share-num {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin: 6px 0 8px; font-size: 36px; font-weight: 800; color: var(--gold);
+}
+.set-share-emojis { letter-spacing: 3px; margin-bottom: 10px; line-height: 1; }
+.set-share-emojis .am-animal { display: inline-block; width: 26px; height: 26px; vertical-align: -6px; }
+.set-share-coin { display: inline-flex; align-items: center; }
+.set-share-coin .am-coin { width: 30px; height: 30px; }
+.set-share-foot { display: block; font-size: 11px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 8px; }
+</style>
+</head>
+<body data-page="settlement">
+  <aside class="rail">
+    <div class="rail-brand">
+      <span class="rail-logo">🐔</span>
+      <div><b>动物集市</b><i>高保真原型 V1.4</i></div>
+    </div>
+    <nav class="rail-nav">
+      <a data-nav="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页 · 农场</span></a>
+      <a data-nav="game" href="game.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg><span>对局 · 核心玩法</span></a>
+      <a data-nav="settlement" href="settlement.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span>过关结算</span></a>
+      <a data-nav="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>动物图鉴</span></a>
+      <a data-nav="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场升级</span></a>
+      <a data-nav="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>每日挑战</span></a>
+      <a data-nav="signin" href="signin.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg><span>每日签到</span></a>
+    </nav>
+    <p class="rail-note">依据 PRD V1.0 · 亮色卡通 · 离线可开</p>
+  </aside>
+  <main class="stage">
+    <div class="phone">
+      <div class="statusbar"><span class="sb-time">09:47</span><span class="sb-icons">▮▮▮ ᯤ 84%</span></div>
+      <div class="screen screen--settlement">
+
+        <header class="set-top">
+          <a class="set-back" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>返回农场</a>
+          <b class="set-title">过关结算</b>
+          <span class="set-back-sp" aria-hidden="true"></span>
+        </header>
+
+        <div class="set-body" id="setBody">
+          <!-- 加载骨架：拿到接口数据后整体替换 -->
+          <div class="set-skel" aria-hidden="true">
+            <div class="skl skl--emoji"></div>
+            <div class="skl skl--title"></div>
+            <div class="skl skl--sub"></div>
+            <div class="skl skl--stars"></div>
+            <div class="skl skl--num"></div>
+            <div class="skl skl--card"></div>
+            <div class="skl skl--chips"></div>
+            <div class="skl skl--btn"></div>
+          </div>
+        </div>
+
+        <!-- 分享卡模态 -->
+        <div class="overlay hidden" id="shareOverlay">
+          <div class="panel">
+            <div class="set-sharecard">
+              <small>今日农场营收</small>
+              <div class="set-share-num"><span class="set-share-coin" id="shareCoin">🪙</span><b class="num" id="shareCoins">0</b></div>
+              <div class="set-share-emojis" id="shareEmojis">🐔🦆🐰🐑🐖🐮✨</div>
+              <small class="set-share-foot" id="shareFoot">动物集市 · 第5关 · 3星收市</small>
+            </div>
+            <button class="btn" id="shareSave" type="button">保存并继续</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+  <script src="mock.js"></script>
+  <script src="api.js"></script>
+  <script src="animals.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var body = document.getElementById('setBody');
+    var overlay = document.getElementById('shareOverlay');
+    var r = null;
+    var starWord = '';
+
+    /* 契约图标库内联 SVG（渲染用字符串） */
+    var STAR_SVG = '<svg class="ic set-star%s" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+    var VIDEO_SVG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>';
+    var CHECK_SVG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    var SHARE_SVG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>';
+
+    /* 星级规则（V4 清空通关版）：通关剩余生命 3 颗 → 3星；2 颗 → 2星；≤1 颗 → 1星 */
+    function starCountOf(hpLeft) { return hpLeft >= 3 ? 3 : (hpLeft >= 2 ? 2 : 1); }
+    function wordOf(n) { return n >= 3 ? '三星' : (n === 2 ? '两星' : '一星'); }
+
+    function allAnimals() { return AM.DB.animals.concat(AM.DB.hidden); }
+
+    function statsChips() {
+      var html = '';
+      var list = allAnimals();
+      for (var i = 0; i < list.length; i++) {
+        var n = r.stats[list[i].id] || 0;
+        if (n > 0) html += '<span class="chip">' + AM.animals.svg(list[i].id) + '<b class="num">×' + n + '</b></span>';
+      }
+      if ((r.stats.rare || 0) > 0) html += '<span class="chip">✨<b class="num">×' + r.stats.rare + '</b></span>';
+      return html;
+    }
+
+    function emojiLine() {
+      var out = '';
+      var list = allAnimals();
+      for (var i = 0; i < list.length; i++) {
+        if ((r.stats[list[i].id] || 0) > 0) out += AM.animals.svg(list[i].id);
+      }
+      if ((r.stats.rare || 0) > 0) out += '✨';
+      return out;
+    }
+
+    /* 数字跳动：从 0 计数到值 */
+    function countUp(el, to, dur) {
+      var t0 = null;
+      function step(t) {
+        if (t0 === null) t0 = t;
+        var p = Math.min(1, (t - t0) / dur);
+        var e = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.round(to * e);
+        if (p < 1) window.requestAnimationFrame(step);
+      }
+      window.requestAnimationFrame(step);
+    }
+
+    function markDoubled(btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="set-dbl-main">' + CHECK_SVG + '营收已翻倍</span><small>广告奖励已到账</small>';
+    }
+
+    function render(data) {
+      r = data;
+      var sc = starCountOf(r.hpLeft != null ? r.hpLeft : 3);
+      starWord = wordOf(sc);
+
+      var stars = '';
+      for (var i = 0; i < 3; i++) stars += STAR_SVG.replace('%s', i < sc ? ' is-got' : '');
+
+      body.innerHTML =
+        '<div class="set-head">' +
+          '<div class="set-head-emoji">🎉</div>' +
+          '<h2>牧场清空！</h2>' +
+          '<p>第' + r.level + '关 · 售出 ' + r.ordersDone + ' 车 · 牧场全卖空</p>' +
+        '</div>' +
+        '<div class="set-stars">' + stars + '</div>' +
+        '<p class="set-star-note">剩余生命 <b class="num">' + (r.hpLeft != null ? r.hpLeft : 3) + '</b> 颗 · 评级' + starWord + '</p>' +
+        '<div class="set-revenue">' +
+          '<small>农场营收</small>' +
+          '<div class="set-rev-num"><span class="set-rev-coin">' + AM.animals.coin() + '</span><b class="num" id="setCoins">0</b></div>' +
+        '</div>' +
+        '<div class="card set-best">' +
+          '<span class="set-best-emoji">' + (r.best.id ? AM.animals.svg(r.best.id) : r.best.emoji) + '</span>' +
+          '<div class="set-best-txt"><b>最贵成交 · ' + r.best.name + '</b><span>本局单笔卖出的最高价</span></div>' +
+          '<b class="num set-best-val">+' + r.best.value + '</b>' +
+        '</div>' +
+        '<div class="set-stats-wrap">' +
+          '<small class="set-stats-label">本局售出</small>' +
+          '<div class="set-stats">' + statsChips() + '</div>' +
+        '</div>' +
+        '<button class="btn btn--video set-double" id="setDouble" type="button">' +
+          '<span class="set-dbl-main">' + VIDEO_SVG + '双倍营收</span>' +
+          '<small>看广告 · 营收翻倍</small>' +
+        '</button>' +
+        '<button class="btn set-sharebtn" id="setShare" type="button">' + SHARE_SVG + '生成营收分享卡</button>' +
+        '<div class="set-banner"><span class="ad-tag">BANNER 广告位（结算页 · 演示）</span></div>' +
+        '<div class="set-actions">' +
+          '<a class="btn btn--green" href="game.html?lv=' + (r.level + 1) + '">下一关 · 第' + (r.level + 1) + '关</a>' +
+          '<a class="btn btn--ghost" href="index.html">返回农场</a>' +
+        '</div>';
+
+      countUp(document.getElementById('setCoins'), r.coins, 900);
+
+      /* 双倍营收：看广告 → 翻倍入账（初始已翻倍则直接置灰） */
+      var dbl = document.getElementById('setDouble');
+      if (r.doubled) {
+        markDoubled(dbl);
+      } else {
+        dbl.addEventListener('click', function () {
+          var btn = this;
+          AM.simulateAd(document.querySelector('.phone'), '双倍营收广告（演示）', function () {
+            var base = r.coins;
+            r.coins = base * 2;
+            r.doubled = true;
+            AM.wallet.add(base); /* 翻倍部分入账 */
+            try { localStorage.setItem('am_last_result', JSON.stringify(r)); } catch (e) { }
+            markDoubled(btn);
+            countUp(document.getElementById('setCoins'), r.coins, 800);
+            AM.toast('营收翻倍！');
+          });
+        });
+      }
+
+      /* 分享卡模态 */
+      document.getElementById('setShare').addEventListener('click', function () {
+        document.getElementById('shareCoin').innerHTML = AM.animals.coin();
+        document.getElementById('shareCoins').textContent = r.coins;
+        document.getElementById('shareEmojis').innerHTML = emojiLine() || (AM.animals.svg('chicken') + AM.animals.svg('duck') + AM.animals.svg('rabbit'));
+        document.getElementById('shareFoot').textContent = '动物集市 · 第' + r.level + '关 · ' + starWord + '收市';
+        overlay.classList.remove('hidden');
+      });
+      document.getElementById('shareSave').addEventListener('click', function () {
+        overlay.classList.add('hidden');
+        AM.toast('分享卡已保存（演示）');
+      });
+    }
+
+    AM.api.fetchSettlement().then(render);
+  })();
+  </script>
+</body>
+</html>

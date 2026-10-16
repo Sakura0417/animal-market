@@ -1,4 +1,7 @@
-/* gen-splash-page.cjs —— 《动物集市》启动页整页插画生成器（可复跑，修改时间：2026-09-22 17:08）
+/* gen-splash-page.cjs —— 《动物集市》启动页整页插画生成器（可复跑，修改时间：2026-10-16 16:40）
+ *
+ * 2026-10-16 16:40 —— 仓库结构重整：store-assets/ 已并入仓库根，路径常量由「工作区根 + 各子目录」
+ *   收敛为「仓库根」直取（ROOT = resolve(__dirname, '..')），去掉 animal-market-cocos/ 前缀。
  *
  * 背景：旧 gen-splash.cjs 产出「横版锁标 + 纯色竖底」被否（版式不像竖屏、风格不合）。
  *     2026-09-22 17:20 更新（v7，用户指令"放弃程序叠字，直接让 AI 把文字生成进图"）：
@@ -30,10 +33,10 @@ const { encodePNG, resizeBox, makeCanvas } = require('./splash-lib.cjs');
 
 PImage.registerFont('C:/Windows/Fonts/SIMYOU.TTF', 'YouYuan').loadSync();
 
-const ROOT = path.resolve(__dirname, '..', '..');                  // 工作区根
+const ROOT = path.resolve(__dirname, '..');                        // 仓库根（= Cocos 工程根）
 const MASTER = ROOT + '/store-assets/splash-page-master.jpg';
-const OUT_ASSETS = ROOT + '/animal-market-cocos/assets/splash/splash-bg.png';
-const OUT_BT = ROOT + '/animal-market-cocos/build-templates/wechatgame';   // 自定义 first-screen 素材目录
+const OUT_ASSETS = ROOT + '/assets/splash/splash-bg.png';
+const OUT_BT = ROOT + '/build-templates/wechatgame';               // 自定义 first-screen 素材目录
 const PRE = ROOT + '/store-assets/splash-check';
 
 const PAGE_W = 960, PAGE_H = 2400;                                  // 整页（宽高比 2.5 > 任意竖屏）

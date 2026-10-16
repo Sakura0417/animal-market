@@ -1,5 +1,6 @@
 /* ============================================================
  * GameView（VIEW 总控 · A1）——《动物集市》Cocos 移植的对局组装层
+ * 修改时间：2026-10-16 16:40 —— 仓库结构重整：原型目录并入 `docs/reference/prototype/`，下方基准注释同步（无代码变更）。
  * 修改时间：2026-10-08 11:45 —— UI 审查 H3：buildLayout 内新增**安全区平移自检断言**
  *   （DEBUG_PROBE 下生效）——Park/Fence/Pen 三块的 top 必须等于「无 inset 累加值 +
  *   column 平移量 dh/2 − topIn」。此前这条约定只写在注释里，改 column 平移公式或给某块单独
@@ -55,7 +56,7 @@
  *   23:00 需求3 围栏满载判定重做：failTick 终局裁决（isFenceHopeless=false → 装车放行续局）+
  *   failwait 期间落地重裁决 + reconcile 尾部仍满载 re-arm；修复并发行走落地凑齐订单被误判挤爆的真 bug。）
  * ------------------------------------------------------------
- * 职责（交接文档行动项 A1，移植基准 = animal-market-prototype/game.js V4.1）：
+ * 职责（交接文档行动项 A1，移植基准 = docs/reference/prototype/game.js V4.1）：
  *   1. 设计空间：375 宽设计单位等比缩放铺满屏幕（Ui.ts 布局纪律的宿主，
  *      高瘦屏把多余高度让给牧场，宽扁屏钳制缩放保下限 375×667）；
  *   2. 装配 8 个子视图组件 + Toast，桥接 GameSession ↔ view（本层只接线不碰数值）；

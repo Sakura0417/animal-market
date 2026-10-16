@@ -1,10 +1,13 @@
 /* 动物美术处理管线（VIEW 资源预处理）
- * 修改时间：2026-09-10 18:33 —— 源目录迁出 assets/（2026-09-10）：2048 原始大图不再放在
- *   assets/animal（会被编辑器当纹理资产导入、拖慢 library，且一旦被引用就冲进 4MB 主包），
- *   移到工程外 ../raw-art/animals-2048-src/。默认 srcDir 同步更新。
+ * 修改时间：2026-10-16 16:40 —— 仓库结构重整（外围资料并入仓库根）：raw-art/ 现位于仓库根
+ *   下（与 assets/ 同级、仍在 assets/ 外），不再是「工程外目录」；默认 srcDir / outDir
+ *   由 cwd 相对改为脚本位置相对（path.resolve(__dirname,'..')），任意工作目录运行一致。
+ * 修改时间：2026-09-10 18:33 —— 源目录迁出 assets/：2048 原始大图不再放在 assets/animal
+ *   （会被编辑器当纹理资产导入、拖慢 library，且一旦被引用就冲进 4MB 主包），
+ *   迁至 assets/ 之外的 raw-art/animals-2048-src/。默认 srcDir 同步更新。
  * 用法：node tools/process-animal-art.cjs [srcDir] [outDir] [size]
- *   默认 srcDir=../raw-art/animals-2048-src（原始大图，2048×2048 白底顶视角）
- *        outDir=assets/resources/animal（降采样产物，运行时 resources.load 目标目录）
+ *   默认 srcDir=<仓库根>/raw-art/animals-2048-src（原始大图，2048×2048 白底顶视角）
+ *        outDir=<仓库根>/assets/resources/animal（降采样产物，运行时 resources.load 目标目录）
  *        size=256
  * 历史：初版源目录 = extensions/cocos-mcp-server/static/2d
  *
@@ -35,8 +38,8 @@ const fs = require('node:fs');
 const zlib = require('node:zlib');
 const path = require('node:path');
 
-const SRC_DIR = process.argv[2] || '../raw-art/animals-2048-src';
-const OUT_DIR = process.argv[3] || 'assets/resources/animal';
+const SRC_DIR = process.argv[2] || path.resolve(__dirname, '..', 'raw-art', 'animals-2048-src');
+const OUT_DIR = process.argv[3] || path.resolve(__dirname, '..', 'assets', 'resources', 'animal');
 const OUT_SIZE = parseInt(process.argv[4], 10) || 256;   // 降采样目标边长
 const SRC_SIZE = 2048;           // 源图边长
 const WM_BOX = 1536;             // 水印填白区起点（右下 512×512 区域）

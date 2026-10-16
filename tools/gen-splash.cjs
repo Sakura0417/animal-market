@@ -44,9 +44,9 @@ const jpeg = DEPS.jpeg;
 const PImage = DEPS.pureimage;
 const { encodePNG, decodePNG, makeCanvas } = require('./splash-lib.cjs');
 
-const ROOT = path.resolve(__dirname, '..', '..');        // 工作区根（含 store-assets/ 与 animal-market-cocos/）
+const ROOT = path.resolve(__dirname, '..');              // 仓库根（= Cocos 工程根）
 const MASTER = ROOT + '/store-assets/logo-master.jpg';
-const OUTDIR = ROOT + '/animal-market-cocos/assets/splash';
+const OUTDIR = ROOT + '/assets/splash';
 const GEN = ROOT + '/store-assets/splash-check';        // 自检图（剪影/预览）输出目录
 fs.mkdirSync(GEN, { recursive: true });
 fs.mkdirSync(OUTDIR, { recursive: true });

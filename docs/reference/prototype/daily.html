@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>每日挑战 · 动物集市</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+/* ============================================================
+ * 每日挑战页专属布局（daily- 前缀）· 颜色/字号/圆角一律用 token
+ * ============================================================ */
+.daily-body { flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 0 16px 20px; }
+.daily-body .rows { padding: 0; }
+
+/* 入场 staggered 动画 */
+@keyframes daily-in { from { opacity: 0; transform: translateY(14px); } }
+.daily-body > * { animation: daily-in .5s cubic-bezier(.22, .9, .3, 1) both; }
+.daily-body > *:nth-child(1) { animation-delay: .04s; }
+.daily-body > *:nth-child(2) { animation-delay: .1s; }
+.daily-body > *:nth-child(3) { animation-delay: .16s; }
+.daily-body > *:nth-child(4) { animation-delay: .22s; }
+.daily-body > *:nth-child(5) { animation-delay: .28s; }
+.daily-rows .row { animation: daily-in .4s ease both; }
+.daily-rows .row:nth-child(1) { animation-delay: .34s; }
+.daily-rows .row:nth-child(2) { animation-delay: .39s; }
+.daily-rows .row:nth-child(3) { animation-delay: .44s; }
+.daily-rows .row:nth-child(4) { animation-delay: .49s; }
+.daily-rows .row:nth-child(5) { animation-delay: .54s; }
+.daily-rows .row:nth-child(6) { animation-delay: .59s; }
+.daily-rows .row:nth-child(7) { animation-delay: .64s; }
+
+/* 今日挑战卡 */
+.daily-hero-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.daily-hero-title { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.daily-hero-ic { color: var(--gold); flex: none; display: flex; }
+.daily-hero-name b { display: block; font-size: 15px; line-height: 1.4; }
+.daily-hero-name > span { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
+.daily-joined { display: flex; align-items: baseline; gap: 8px; margin: 14px 2px 12px; }
+.daily-joined b { font-size: 32px; font-weight: 800; color: var(--gold-deep); line-height: 1; }
+.daily-joined > span { font-size: 12px; color: var(--muted); }
+.daily-mine { display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, .65); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 12px; }
+.daily-mine > span:first-child { font-size: 12px; color: var(--muted); }
+.daily-mine-score { font-size: 20px; font-weight: 800; color: var(--green); line-height: 1; }
+
+/* 参战按钮 */
+.daily-cta-note { font-size: 12px; color: var(--muted); text-align: center; margin-top: 8px; }
+
+/* 击败百分比卡 */
+.daily-beat-top { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.daily-beat-top > b { font-size: 32px; font-weight: 800; color: var(--gold-deep); line-height: 1; }
+.daily-beat-top > span { font-size: 12px; color: var(--muted); }
+.daily-beat-locked { font-size: 13px; color: var(--muted); }
+
+/* 榜单 tabs（active 态由页面类 is-active 实现） */
+.daily-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.daily-tab { padding: 9px 0; border-radius: 11px; border: 1px solid var(--rule); background: var(--bg3); color: var(--muted); font-size: 14px; font-weight: 700; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+.daily-tab:hover { color: var(--ink); }
+.daily-tab.is-active { color: var(--gold-deep); border-color: rgba(255, 157, 43, .65); background: #fff3dd; font-weight: 800; }
+
+/* 榜单行 */
+.daily-rankbadge { width: 28px; flex: none; display: flex; align-items: center; justify-content: center; }
+.daily-medal { display: flex; }
+.daily-medal--1 { color: var(--gold); }
+.daily-medal--2 { color: var(--green); }
+.daily-medal--3 { color: var(--sky); }
+.daily-rankno { min-width: 26px; height: 26px; padding: 0 4px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--bg3); border: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+.daily-avatar { width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--bg3); border: 1px solid var(--rule); display: flex; align-items: center; justify-content: center; font-size: 20px; overflow: hidden; }
+.daily-avatar .am-animal { width: 28px; height: 28px; }
+.daily-name { display: flex; align-items: center; gap: 7px; }
+.daily-name b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.daily-score { font-size: 15px; font-weight: 700; color: var(--gold); }
+.daily-rank.is-me { border-color: rgba(255, 157, 43, .7); background: #fff8ec; }
+</style>
+</head>
+<body data-page="daily">
+  <aside class="rail">
+    <div class="rail-brand">
+      <span class="rail-logo">🐔</span>
+      <div><b>动物集市</b><i>高保真原型 V1.4</i></div>
+    </div>
+    <nav class="rail-nav">
+      <a data-nav="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页 · 农场</span></a>
+      <a data-nav="game" href="game.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg><span>对局 · 核心玩法</span></a>
+      <a data-nav="settlement" href="settlement.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span>过关结算</span></a>
+      <a data-nav="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>动物图鉴</span></a>
+      <a data-nav="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场升级</span></a>
+      <a data-nav="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>每日挑战</span></a>
+      <a data-nav="signin" href="signin.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg><span>每日签到</span></a>
+    </nav>
+    <p class="rail-note">依据 PRD V1.0 · 亮色卡通 · 离线可开</p>
+  </aside>
+  <main class="stage">
+    <div class="phone">
+      <div class="statusbar"><span class="sb-time">09:47</span><span class="sb-icons">▮▮▮ ᯤ 84%</span></div>
+      <div class="screen screen--daily">
+        <header class="topbar">
+          <div class="tb-coins"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg><b class="num" data-am-coins>0</b></div>
+          <a class="tb-mini" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>图鉴 11/15</span></a>
+        </header>
+        <div class="daily-body">
+          <!-- 1 · 今日挑战卡 -->
+          <section class="card card--cta daily-hero">
+            <div class="daily-hero-head">
+              <div class="daily-hero-title">
+                <span class="daily-hero-ic"><svg class="ic ic--lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg></span>
+                <div class="daily-hero-name">
+                  <b>今日挑战 · 双倍订单日</b>
+                  <span>种子 <span class="num" id="dailySeed"></span> · 全网同题</span>
+                </div>
+              </div>
+              <span class="chip chip--gold"><svg class="ic ic--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></svg><span>距结束 <span class="num" id="dailyLeft"></span> 小时</span></span>
+            </div>
+            <div class="daily-joined">
+              <b class="num" id="dailyJoined"></b>
+              <span>人已参加</span>
+            </div>
+            <div class="daily-mine">
+              <span>我的成绩</span>
+              <span id="dailyMine"></span>
+            </div>
+          </section>
+          <!-- 2 · 参战按钮 -->
+          <div class="daily-cta">
+            <a class="btn btn--lg" href="game.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg><span>参与今日挑战</span></a>
+            <p class="daily-cta-note">成绩 = 完成订单数 + 剩余围栏格数 · 同题比拼</p>
+          </div>
+          <!-- 3 · 击败百分比 -->
+          <section class="card" id="dailyBeat"></section>
+          <!-- 4/5 · 榜单 -->
+          <div class="sec-title"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>今日榜单</span></div>
+          <div class="daily-tabs">
+            <button class="daily-tab is-active" type="button" data-list="friends">好友榜</button>
+            <button class="daily-tab" type="button" data-list="province">省份榜</button>
+          </div>
+          <div class="rows daily-rows" id="dailyRank"></div>
+        </div>
+        <nav class="tabbar">
+          <a data-tab="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页</span></a>
+          <a data-tab="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>图鉴</span></a>
+          <a data-tab="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场</span></a>
+          <a data-tab="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>挑战</span></a>
+        </nav>
+      </div>
+    </div>
+  </main>
+  <script src="mock.js"></script>
+  <script src="api.js"></script>
+  <script src="animals.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var AM = window.AM;
+    var daily = AM.DB.daily;
+
+    var MEDAL_SVG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.21 15 2.66 7.14a2 2 0 0 1 .13-2.2L4.4 2.8A2 2 0 0 1 6 2h12a2 2 0 0 1 1.6.8l1.6 2.14a2 2 0 0 1 .14 2.2L16.79 15"/><path d="M11 12 5.12 2.2"/><path d="m13 12 5.88-9.8"/><path d="M8 7h8"/><circle cx="12" cy="17" r="5"/><path d="M12 18v-2h-.5"/></svg>';
+
+    function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+    /* ---- 今日挑战卡（数据只读 AM.DB） ---- */
+    document.getElementById('dailySeed').textContent = daily.seed;
+    document.getElementById('dailyLeft').textContent = daily.deadlineHours;
+    document.getElementById('dailyJoined').textContent = fmt(daily.joined);
+
+    var mineEl = document.getElementById('dailyMine');
+    mineEl.innerHTML = daily.score > 0
+      ? '<b class="num daily-mine-score">' + daily.score + '</b>'
+      : '<span class="chip">今日未挑战</span>';
+
+    /* ---- 击败百分比卡：score=0 时灰态 ---- */
+    var beatEl = document.getElementById('dailyBeat');
+    beatEl.innerHTML = daily.score > 0
+      ? '<div class="daily-beat-top"><b class="num">' + daily.beat + '%</b><span>今日击败了 <span class="num">' + daily.beat + '%</span> 的玩家</span></div><div class="bar"><div class="bar-fill" style="width:' + daily.beat + '%"></div></div>'
+      : '<p class="daily-beat-locked">完成今日挑战后查看排名</p>';
+
+    /* ---- 榜单：好友榜 / 省份榜，JS 切换渲染 ---- */
+    var rankEl = document.getElementById('dailyRank');
+    var tabs = document.querySelectorAll('.daily-tab');
+    var current = 'friends';
+
+    function renderRank(key) {
+      var list = daily[key].slice().sort(function (a, b) { return b.score - a.score; });
+      var html = '';
+      for (var i = 0; i < list.length; i++) {
+        var p = list[i];
+        var isMe = p.name === '我';
+        var badge = i < 3
+          ? '<span class="daily-medal daily-medal--' + (i + 1) + '">' + MEDAL_SVG + '</span>'
+          : '<span class="daily-rankno num">' + (i + 1) + '</span>';
+        html += '<div class="row daily-rank' + (isMe ? ' is-me' : '') + '">' +
+          '<span class="daily-rankbadge">' + badge + '</span>' +
+          '<span class="daily-avatar">' + (AM.animals.has(p.avatar) ? AM.animals.svg(p.avatar) : p.avatar) + '</span>' +
+          '<div class="grow daily-name"><b>' + p.name + '</b>' + (isMe ? '<span class="chip chip--gold">我</span>' : '') + '</div>' +
+          '<b class="num daily-score">' + p.score + '</b>' +
+        '</div>';
+      }
+      rankEl.innerHTML = html;
+    }
+
+    for (var t = 0; t < tabs.length; t++) {
+      (function (btn) {
+        btn.addEventListener('click', function () {
+          var key = btn.getAttribute('data-list');
+          if (key === current) return;
+          current = key;
+          for (var k = 0; k < tabs.length; k++) tabs[k].classList.toggle('is-active', tabs[k] === btn);
+          renderRank(key);
+        });
+      })(tabs[t]);
+    }
+
+    renderRank(current);
+  })();
+  </script>
+</body>
+</html>

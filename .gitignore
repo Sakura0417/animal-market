@@ -4,6 +4,9 @@ local/
 build/
 profiles/
 node_modules/
+
+# Cocos 编辑器扩展（第三方，本机编辑器环境；新设备在编辑器内重装即可）
+extensions/
 tools/sim/dist/
 *.log
 .DS_Store

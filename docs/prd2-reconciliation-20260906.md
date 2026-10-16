@@ -1,6 +1,6 @@
 # 《动物集市》PRD V2.0 对齐梳理（2026-09-06 18:02）
 
-> 依据：`animal-market-prd/animal-market-prd.html`（PRD **V2.0**，2026-09-06 17:54 更新，75,910 B；旧版 65,381 B）
+> 依据：`docs/reference/prd/animal-market-prd.html`（PRD **V2.0**，2026-09-06 17:54 更新，75,910 B；旧版 65,381 B）
 > 范围：重梳 2026-09-06 完成的全部工作（需求理解 / 设计方案 / 任务拆解 / 已写代码）
 > 方法：PRD 2.0 全文解析 + 19 个 TS 源码逐项核对 + `BalanceSim` 实跑复核
 
@@ -174,4 +174,4 @@
 - **PRD 2.0 全文解析**：标题骨架 + 正文全文（33,408 字符），重点核对 §5.1 网格布局规范 / 碰撞引擎决策 / 字段规则 / 难度曲线、§5.4 失败态、§5.5 点位矩阵、§5.8 v1.0 范围、§6 版本修订记录
 - **源码核对**：`core/Types.ts`(坐标字段) / `core/Constants.ts`(CRANE_MAX=4) / `core/Board.ts`(blockerOf/scatter) / `core/GameSession.ts`(generate/useShuffle/useFlip/revive/isWin) / `view/PenView.ts`(onTap/roadWaypoints) / `view/GameView.ts`(8 处 ad.show / 碰撞分支) / `view/Panels.ts`(win 无星级) / `services/AdService.ts`
 - **实跑复核**：`npm run sim`（L1-L12 各 400 局）——L1-2 100%、L4 99.5%、L8 74.5%、L12 53.8%、挤爆 0→43.8%、0 卡死，与 PRD 2.0 的 4800 局基线吻合
-- **交叉核对**：`animal-market-prototype/game.js:40`（CRANE_MAX=4）、`docs/grid-layout-and-collision-analysis.md`（与 PRD 2.0 一致性比对）
+- **交叉核对**：`docs/reference/prototype/game.js:40`（CRANE_MAX=4）、`docs/grid-layout-and-collision-analysis.md`（与 PRD 2.0 一致性比对）

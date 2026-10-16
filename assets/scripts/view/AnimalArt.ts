@@ -1,5 +1,5 @@
 /* AnimalArt（VIEW）：动物素材加载与模式开关 + 统一动物图标构造器
- * 修改时间：2026-09-08
+ * 修改时间：2026-10-16 16:40 —— 仓库结构重整：raw-art/ 并入仓库根，下方路径注释同步（无代码变更）
  * ART_MODE 一键切换：
  *   'sprite' = 顶视角 3D 渲染图模式（assets/resources/animal/{species}.png，
  *              单图+运行时旋转 —— 移动时按 dir 旋转 spNode.angle = -CSS_DEG[dir]
@@ -22,8 +22,10 @@
  *   但 Cocos resources.load 只能加载 assets/resources/ 下的资源，故运行时资源目录定为
  *   assets/resources/animal/（路径 'animal/{species}'），原始 2048 图经 process-animal-art.cjs
  *   降采样后输出到此；旧目录 assets/resources/art/animals/ 已废弃并备份到 raw-art/。
+ * 2026-10-16 16:40：raw-art/ 并入仓库根（与 assets/ 同级、仍在 assets/ 外），
+ *   process-animal-art.cjs 默认路径改由脚本位置解析，与 cwd 无关。
  * 2026-09-10 18:33：原始大图源目录迁出 assets/（避免被编辑器当纹理资产导入、且一旦被
- *   引用就冲进 4MB 主包）→ ../raw-art/animals-2048-src/，process-animal-art.cjs 默认
+ *   引用就冲进 4MB 主包）→ raw-art/animals-2048-src/，process-animal-art.cjs 默认
  *   srcDir 已同步。运行时目录 assets/resources/animal/ 不变。
  * 2026-09-07 12:00 历史：图片默认以 texture 类型导入（无 spriteFrame 子资源），
  *   改为加载 'xxx/texture' 为 Texture2D 后运行时动态构造 SpriteFrame。 */

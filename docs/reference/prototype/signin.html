@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>每日签到 · 动物集市</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+/* ============================================================
+ * 每日签到页专属布局（sig- 前缀）· 颜色/字号/圆角一律用 token
+ * ============================================================ */
+.sig-top { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 12px 16px 4px; }
+.sig-back { display: inline-flex; align-items: center; gap: 6px; justify-self: start; font-size: 13px; color: var(--muted); transition: color .15s; }
+.sig-back:hover { color: var(--gold); }
+.sig-title { font-size: 15px; font-weight: 800; letter-spacing: .02em; }
+
+.sig-body { flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 8px 16px 22px; }
+
+/* 入场 staggered 动画 */
+@keyframes sig-in { from { opacity: 0; transform: translateY(14px); } }
+.sig-body > * { animation: sig-in .5s cubic-bezier(.22, .9, .3, 1) both; }
+.sig-body > *:nth-child(1) { animation-delay: .05s; }
+.sig-body > *:nth-child(2) { animation-delay: .11s; }
+.sig-body > *:nth-child(3) { animation-delay: .17s; }
+.sig-body > *:nth-child(4) { animation-delay: .23s; }
+.sig-body > *:nth-child(5) { animation-delay: .29s; }
+.sig-grid .sig-cell { animation: sig-in .45s ease both; }
+.sig-grid .sig-cell:nth-child(1) { animation-delay: .2s; }
+.sig-grid .sig-cell:nth-child(2) { animation-delay: .26s; }
+.sig-grid .sig-cell:nth-child(3) { animation-delay: .32s; }
+.sig-grid .sig-cell:nth-child(4) { animation-delay: .38s; }
+.sig-grid .sig-cell:nth-child(5) { animation-delay: .44s; }
+.sig-grid .sig-cell:nth-child(6) { animation-delay: .5s; }
+.sig-grid .sig-cell:nth-child(7) { animation-delay: .56s; }
+.sig-grid .sig-cell.is-today { animation: sig-in .45s ease both, sig-pulse 1.7s ease-out infinite; }
+.sig-grid.is-settled .sig-cell { animation: none; }
+.sig-grid.is-settled .sig-cell.is-just { animation: sig-pop .45s ease; }
+@keyframes sig-pop { 0% { transform: scale(.94); } 55% { transform: scale(1.04); } 100% { transform: scale(1); } }
+
+/* 连签头部卡 */
+.sig-streak { display: flex; align-items: center; gap: 14px; }
+.sig-flame { flex: none; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: var(--gold-deep); background: #fff3dd; border: 1px solid rgba(255, 157, 43, .55); box-shadow: 0 3px 8px rgba(255, 157, 43, .28); }
+.sig-streak-line { display: flex; align-items: baseline; gap: 4px; font-size: 15px; font-weight: 700; }
+.sig-streak-line .num { font-size: 32px; font-weight: 800; color: var(--gold); }
+.sig-streak-info p { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* 7 日奖励网格 */
+.sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sig-cell { background: var(--bg3); border: 1px solid var(--rule); border-radius: 12px; padding: 11px 12px; }
+.sig-cell--last { grid-column: 1 / -1; }
+.sig-cell-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 21px; }
+.sig-day { font-size: 12px; font-weight: 600; color: var(--muted); }
+.sig-cell-coins { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 17px; }
+.sig-cell-coins b { font-size: 20px; font-weight: 800; color: var(--gold-deep); line-height: 1; }
+.sig-cell.is-done { border-color: rgba(88, 192, 108, .45); background: #eef9ef; opacity: .68; }
+.sig-cell.is-done .sig-cell-coins b { color: var(--muted); }
+.sig-done-ic { display: flex; color: #2f9e4f; }
+.sig-cell.is-today { border-color: rgba(255, 157, 43, .8); background: #fff3dd; }
+@keyframes sig-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 157, 43, .45); }
+  70%, 100% { box-shadow: 0 0 0 10px rgba(255, 157, 43, 0); }
+}
+
+/* 按钮 */
+.sig-claim.is-ready { animation: sig-in .5s cubic-bezier(.22, .9, .3, 1) .23s both, sig-glow 1.5s ease-in-out infinite; }
+@keyframes sig-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 157, 43, 0), 0 4px 10px rgba(255, 157, 43, .35); }
+  50% { box-shadow: 0 0 16px rgba(255, 157, 43, .55), 0 4px 10px rgba(255, 157, 43, .35); }
+}
+.sig-double { display: none; width: 100%; }
+.sig-double.is-show { display: inline-flex; }
+.sig-dbl-main { text-align: left; }
+.sig-home { width: 100%; }
+</style>
+</head>
+<body data-page="signin">
+  <aside class="rail">
+    <div class="rail-brand">
+      <span class="rail-logo">🐔</span>
+      <div><b>动物集市</b><i>高保真原型 V1.4</i></div>
+    </div>
+    <nav class="rail-nav">
+      <a data-nav="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页 · 农场</span></a>
+      <a data-nav="game" href="game.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg><span>对局 · 核心玩法</span></a>
+      <a data-nav="settlement" href="settlement.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span>过关结算</span></a>
+      <a data-nav="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>动物图鉴</span></a>
+      <a data-nav="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场升级</span></a>
+      <a data-nav="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>每日挑战</span></a>
+      <a data-nav="signin" href="signin.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg><span>每日签到</span></a>
+    </nav>
+    <p class="rail-note">依据 PRD V1.0 · 亮色卡通 · 离线可开</p>
+  </aside>
+  <main class="stage">
+    <div class="phone">
+      <div class="statusbar"><span class="sb-time">09:47</span><span class="sb-icons">▮▮▮ ᯤ 84%</span></div>
+      <div class="screen screen--signin">
+        <header class="sig-top">
+          <a class="sig-back" href="index.html"><svg class="ic ic--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg><span>返回农场</span></a>
+          <b class="sig-title">每日签到</b>
+        </header>
+        <div class="sig-body">
+          <!-- 1 · 连签头部卡 -->
+          <section class="card card--cta sig-streak">
+            <span class="sig-flame"><svg class="ic ic--lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span>
+            <div class="sig-streak-info">
+              <div class="sig-streak-line">已连续签到<b class="num" id="sigStreakNum"></b>天</div>
+              <p>连签中断后重新累计</p>
+            </div>
+          </section>
+          <!-- 2 · 7 日奖励网格 -->
+          <div class="sig-grid" id="sigGrid"></div>
+          <!-- 3 · 领取按钮 -->
+          <button class="btn btn--lg sig-claim" id="sigClaim" type="button"></button>
+          <!-- 4 · 翻倍按钮（签到成功后显示） -->
+          <button class="btn btn--video sig-double" id="sigDouble" type="button">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+            <span class="sig-dbl-main">签到翻倍 · 看广告<small>再得 <span class="sig-coin"></span><span class="num" id="sigDoubleNum"></span></small></span>
+          </button>
+          <!-- 5 · 返回农场 -->
+          <a class="btn btn--ghost sig-home" href="index.html">返回农场</a>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="mock.js"></script>
+  <script src="api.js"></script>
+  <script src="animals.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var AM = window.AM;
+    var days = AM.DB.signin.days;
+    var walletData = AM.wallet.data;
+
+    document.querySelectorAll('.sig-coin').forEach(function (el) { el.innerHTML = AM.animals.coin(); });
+
+    var CHECK_SVG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+    var gridEl = document.getElementById('sigGrid');
+    var streakNumEl = document.getElementById('sigStreakNum');
+    var claimBtn = document.getElementById('sigClaim');
+    var doubleBtn = document.getElementById('sigDouble');
+
+    /* 状态只从 AM.wallet.data 读（signinDone / signinDay） */
+    var state = {
+      todayIdx: Math.min(walletData.signinDay, days.length - 1),
+      signedToday: !!walletData.signinDone[walletData.signinDay],
+      reward: 0,
+      doubled: false
+    };
+    state.reward = days[state.todayIdx].coins;
+
+    /* 连签天数 = signinDone 前缀连续 true 的个数 */
+    function streakCount() {
+      var n = 0;
+      for (var i = 0; i < walletData.signinDone.length; i++) {
+        if (walletData.signinDone[i]) n++; else break;
+      }
+      return n;
+    }
+
+    function renderStreak() { streakNumEl.textContent = streakCount(); }
+
+    function renderGrid(justIdx) {
+      var html = '';
+      for (var i = 0; i < days.length; i++) {
+        var d = days[i];
+        var done = !!walletData.signinDone[i];
+        var isToday = i === state.todayIdx && !state.signedToday;
+        var cls = 'sig-cell';
+        if (i === days.length - 1) cls += ' sig-cell--last';
+        if (done) cls += ' is-done';
+        else if (isToday) cls += ' is-today';
+        if (i === justIdx) cls += ' is-just';
+        var status = done
+          ? '<span class="sig-done-ic">' + CHECK_SVG + '</span>'
+          : (isToday ? '<span class="chip chip--gold">今日</span>' : '');
+        html += '<div class="' + cls + '">' +
+          '<div class="sig-cell-top"><span class="sig-day">第 ' + (i + 1) + ' 天</span>' + status + '</div>' +
+          '<div class="sig-cell-coins">' + AM.animals.coin() + '<b class="num">' + d.coins + '</b>' +
+            (d.double ? '<span class="chip chip--gold">翻倍</span>' : '') +
+          '</div>' +
+        '</div>';
+      }
+      if (justIdx != null) gridEl.classList.add('is-settled');
+      gridEl.innerHTML = html;
+    }
+
+    function renderClaim() {
+      if (state.signedToday) {
+        claimBtn.classList.remove('is-ready');
+        claimBtn.disabled = true;
+        claimBtn.innerHTML = '✓ 今日已签到';
+      } else {
+        claimBtn.classList.add('is-ready');
+        claimBtn.disabled = false;
+        claimBtn.innerHTML = '领取今日奖励 · ' + AM.animals.coin() + '<span class="num">' + state.reward + '</span>';
+      }
+    }
+
+    function renderDouble() {
+      if (!state.signedToday) { doubleBtn.classList.remove('is-show'); return; }
+      doubleBtn.classList.add('is-show');
+      if (state.doubled) {
+        doubleBtn.disabled = true;
+        doubleBtn.innerHTML = '✓ 已翻倍';
+      } else {
+        var n = document.getElementById('sigDoubleNum');
+        if (n) n.textContent = state.reward;
+      }
+    }
+
+    /* 领取今日奖励 */
+    claimBtn.addEventListener('click', function () {
+      if (state.signedToday || claimBtn.disabled) return;
+      claimBtn.disabled = true;
+      AM.api.doSignin().then(function (res) {
+        if (!res.ok) { AM.toast(res.msg); renderClaim(); return; }
+        state.signedToday = true;
+        state.reward = res.coins;
+        renderStreak();
+        renderGrid(state.todayIdx);
+        renderClaim();
+        renderDouble();
+        AM.toast('签到成功 · 金币 +' + res.coins);
+      });
+    });
+
+    /* 看广告翻倍 */
+    doubleBtn.addEventListener('click', function () {
+      if (state.doubled || !state.signedToday || doubleBtn.disabled) return;
+      doubleBtn.disabled = true;
+      AM.simulateAd(document.querySelector('.phone'), '签到翻倍广告（演示）', function () {
+        AM.api.doubleSignin(state.reward).then(function (res) {
+          if (!res.ok) { if (res.msg) AM.toast(res.msg); doubleBtn.disabled = false; return; }
+          state.doubled = true;
+          renderDouble();
+          AM.toast('奖励已翻倍 · 再 +' + state.reward);
+        });
+      });
+    });
+
+    renderStreak();
+    renderGrid();
+    renderClaim();
+    renderDouble();
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>首页 · 农场 · 动物集市</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+/* ===== 页面专属布局：首页 · 农场（home-*） ===== */
+.home-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 0 16px 16px;
+}
+.home-body::-webkit-scrollbar { width: 0; }
+
+/* 入场：卡片依次上浮 */
+@keyframes homeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.home-body > * { animation: homeUp .5s ease both; }
+.home-body > *:nth-child(1) { animation-delay: .05s; }
+.home-body > *:nth-child(2) { animation-delay: .13s; }
+.home-body > *:nth-child(3) { animation-delay: .21s; }
+.home-body > *:nth-child(4) { animation-delay: .29s; }
+.home-body > *:nth-child(5) { animation-delay: .37s; }
+
+/* 1) 农场白天 Hero（纯 CSS 场景） */
+.home-hero {
+  position: relative; height: 200px; flex: none;
+  border: 1px solid #e6ecf1;
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(80% 55% at 76% 16%, rgba(255, 214, 102, .55), transparent 60%),
+    linear-gradient(180deg, #7cc8f2 0%, #a5dff6 46%, #d3efda 100%);
+  box-shadow: 0 3px 10px rgba(120, 150, 180, .12);
+}
+.home-sun {
+  position: absolute; top: 20px; right: 46px;
+  width: 46px; height: 46px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #ffe9a8, #ffd24d 74%);
+  box-shadow: 0 0 22px rgba(255, 210, 77, .85), 0 0 60px rgba(255, 210, 77, .4);
+}
+.home-cloud {
+  position: absolute; top: 30px; left: 26px;
+  width: 56px; height: 18px; border-radius: 999px;
+  background: rgba(255, 255, 255, .92);
+  animation: homeDrift 6s ease-in-out infinite alternate;
+}
+.home-cloud::before {
+  content: ''; position: absolute; top: -9px; left: 12px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(255, 255, 255, .92);
+}
+.home-cloud::after {
+  content: ''; position: absolute; top: -5px; right: 9px;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: rgba(255, 255, 255, .92);
+}
+@keyframes homeDrift { from { transform: translateX(0); } to { transform: translateX(26px); } }
+.home-grass {
+  position: absolute; left: -8px; right: -8px; bottom: -8px; height: 88px;
+  border-radius: 46% 54% 0 0 / 82% 68% 0 0;
+  background:
+    repeating-linear-gradient(115deg, transparent 0 9px, rgba(88, 192, 108, .1) 9px 18px),
+    linear-gradient(180deg, #8ed89a, #5fba70 38%, #4aa75c);
+}
+.home-animal {
+  position: absolute; line-height: 1;
+  animation: homeWalk 3.4s ease-in-out infinite alternate;
+  filter: drop-shadow(0 3px 3px rgba(40, 90, 45, .35));
+}
+.home-animal svg { width: 100%; height: 100%; display: block; }
+@keyframes homeWalk { from { transform: translateX(-6px); } to { transform: translateX(6px); } }
+.home-deco { position: absolute; bottom: 8px; line-height: 1; font-size: 34px; filter: drop-shadow(0 4px 6px rgba(40, 90, 45, .4)); }
+.home-deco--l { left: 10px; }
+.home-deco--r { right: 8px; bottom: 4px; }
+
+/* 2) 关卡 CTA 卡 */
+.home-cta-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.home-cta-txt h2 { font-size: 20px; font-weight: 800; }
+.home-cta-txt p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.home-cta-stars { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.home-star-row { display: flex; gap: 3px; }
+.home-star { width: 26px; height: 26px; color: var(--muted); }
+.home-star.is-got { color: var(--gold); fill: var(--gold); filter: drop-shadow(0 2px 4px rgba(255, 157, 43, .55)); }
+.home-cta-stars small { font-size: 11px; color: var(--muted); }
+
+/* 3) 每日挑战横幅 */
+.home-banner { display: flex; align-items: center; gap: 12px; transition: border-color .15s, transform .1s; }
+.home-banner > .ic:first-child { color: var(--green); }
+.home-banner:active { transform: scale(.99); }
+.home-banner-txt { flex: 1; min-width: 0; }
+.home-banner-txt b { display: block; font-size: 15px; }
+.home-joined { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.home-arrow { color: var(--muted); transform: rotate(180deg); transition: transform .15s, color .15s; }
+.home-banner:hover { border-color: rgba(88, 192, 108, .7); }
+.home-banner:hover .home-arrow { color: var(--green); transform: rotate(180deg) translateX(3px); }
+
+/* 4) 签到卡 */
+.home-sign { display: flex; align-items: center; gap: 12px; }
+.home-sign > .ic { color: var(--gold); }
+.home-sign-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.home-sign-txt b { font-size: 15px; }
+.home-sign-right { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.home-sign-today { display: flex; align-items: center; gap: 6px; }
+
+/* 5) 图鉴进度卡 */
+.home-col-top { display: flex; align-items: center; gap: 8px; }
+.home-col-top > .ic { color: var(--gold); }
+.home-col-top b { flex: 1; font-size: 15px; }
+.home-col-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.home-col-bar .bar { flex: 1; }
+.home-col-bar .num { font-size: 13px; font-weight: 700; }
+.home-col-sub { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body data-page="home">
+  <aside class="rail">
+    <div class="rail-brand">
+      <span class="rail-logo">🐔</span>
+      <div><b>动物集市</b><i>高保真原型 V1.4</i></div>
+    </div>
+    <nav class="rail-nav">
+      <a data-nav="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页 · 农场</span></a>
+      <a data-nav="game" href="game.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg><span>对局 · 核心玩法</span></a>
+      <a data-nav="settlement" href="settlement.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg><span>过关结算</span></a>
+      <a data-nav="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>动物图鉴</span></a>
+      <a data-nav="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场升级</span></a>
+      <a data-nav="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>每日挑战</span></a>
+      <a data-nav="signin" href="signin.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg><span>每日签到</span></a>
+    </nav>
+    <p class="rail-note">依据 PRD V1.0 · 亮色卡通 · 离线可开</p>
+  </aside>
+  <main class="stage">
+    <div class="phone">
+      <div class="statusbar"><span class="sb-time">09:47</span><span class="sb-icons">▮▮▮ ᯤ 84%</span></div>
+      <div class="screen screen--home">
+
+        <header class="topbar">
+          <div class="tb-coins"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg><b class="num" data-am-coins>0</b></div>
+          <a class="tb-mini" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>图鉴 11/15</span></a>
+        </header>
+
+        <div class="home-body">
+
+          <!-- 1) 农场白天 Hero -->
+          <div class="home-hero">
+            <div class="home-sun"></div>
+            <div class="home-cloud"></div>
+            <div class="home-grass"></div>
+            <span class="home-animal" data-animal="chicken" style="left:14%;bottom:14px;width:40px;height:40px;animation-duration:3.6s"></span>
+            <span class="home-animal" data-animal="rabbit" style="left:28%;bottom:30px;width:36px;height:36px;animation-duration:4.2s;animation-delay:.4s"></span>
+            <span class="home-animal" data-animal="sheep" style="left:43%;bottom:6px;width:46px;height:46px;animation-duration:3.1s;animation-delay:.9s"></span>
+            <span class="home-animal" data-animal="duck" style="left:57%;bottom:26px;width:38px;height:38px;animation-duration:3.8s;animation-delay:.2s"></span>
+            <span class="home-animal" data-animal="pig" style="left:66%;bottom:4px;width:44px;height:44px;animation-duration:4.5s;animation-delay:1.1s"></span>
+            <span class="home-animal" data-animal="cow" style="left:77%;bottom:36px;width:38px;height:38px;animation-duration:3.3s;animation-delay:.6s"></span>
+            <span class="home-deco home-deco--l" id="homeDecoL" title="鸡舍"></span>
+            <span class="home-deco home-deco--r" id="homeDecoR" title="池塘"></span>
+          </div>
+
+          <!-- 2) 关卡 CTA -->
+          <div class="card card--cta">
+            <div class="home-cta-top">
+              <div class="home-cta-txt">
+                <h2 id="homeLevel">第1关 · 集市</h2>
+                <p id="homeCtaSub">目标：完成 3 张订单收市</p>
+              </div>
+              <div class="home-cta-stars">
+                <div class="home-star-row">
+                  <svg class="ic home-star is-got" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  <svg class="ic home-star is-got" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  <svg class="ic home-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                </div>
+                <small>剩余围栏格决定星级</small>
+              </div>
+            </div>
+            <a class="btn btn--lg" href="game.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>开始营业</a>
+          </div>
+
+          <!-- 3) 每日挑战横幅 -->
+          <a class="card home-banner" href="daily.html">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+            <div class="home-banner-txt">
+              <b id="homeDailyTitle">每日挑战 · 今日双倍订单日</b>
+              <span class="home-joined" id="homeJoined"><b class="num">12,864</b> 人已参加</span>
+            </div>
+            <svg class="ic home-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          </a>
+
+          <!-- 4) 每日签到 -->
+          <div class="card home-sign">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg>
+            <div class="home-sign-txt">
+              <b>每日签到</b>
+              <span class="chip chip--gold"><svg class="ic ic--sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg><span id="homeStreak">连续 3 天</span></span>
+            </div>
+            <div class="home-sign-right">
+              <span class="home-sign-today"><span class="dot" id="homeSignDot"></span><span class="chip chip--green" id="homeSignChip">今日可领</span></span>
+              <a class="btn btn--sm" href="signin.html" id="homeSignBtn">领取</a>
+            </div>
+          </div>
+
+          <!-- 5) 图鉴进度 -->
+          <div class="card home-col">
+            <div class="home-col-top">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+              <b>动物图鉴</b>
+              <a class="btn btn--sm" href="collection.html">查看</a>
+            </div>
+            <div class="home-col-bar">
+              <div class="bar"><div class="bar-fill" style="width:73%"></div></div>
+              <b class="num">11/15</b>
+            </div>
+            <p class="home-col-sub">集齐基础 12 张解锁豪华农场皮肤</p>
+          </div>
+
+        </div>
+
+        <nav class="tabbar">
+          <a data-tab="home" href="index.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>首页</span></a>
+          <a data-tab="collection" href="collection.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg><span>图鉴</span></a>
+          <a data-tab="farm" href="farm.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>农场</span></a>
+          <a data-tab="daily" href="daily.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg><span>挑战</span></a>
+        </nav>
+
+      </div>
+    </div>
+  </main>
+  <script src="mock.js"></script>
+  <script src="api.js"></script>
+  <script src="animals.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    /* 关卡 / 挑战主题 / 参加人数 / 连续签到 —— 关卡读本地进度（通关数+1），其余读单一数据源 AM.DB */
+    var curLv = 1;
+    try { curLv = Math.min(30, Math.max(1, parseInt(localStorage.getItem('am_level'), 10) || 1)); } catch (e) { }
+    document.getElementById('homeLevel').textContent = '第' + curLv + '关 · 集市';
+    document.getElementById('homeCtaSub').textContent = '目标：清空牧场所有动物 · 生命 3 颗';
+    document.querySelector('.card--cta .btn--lg').href = 'game.html?lv=' + curLv;
+    document.getElementById('homeDailyTitle').textContent = '每日挑战 · ' + AM.DB.daily.theme;
+    document.getElementById('homeJoined').innerHTML = '<b class="num">' + AM.DB.daily.joined.toLocaleString() + '</b> 人已参加';
+    document.getElementById('homeStreak').innerHTML = '连续 <b class="num">' + AM.DB.signin.streak + '</b> 天';
+
+    /* 牧场白天：走地动物换 Q 版 SVG */
+    document.querySelectorAll('.home-animal').forEach(function (el) {
+      var id = el.getAttribute('data-animal');
+      if (id) el.innerHTML = AM.animals.svg(id);
+    });
+
+    /* 签到状态：今天已领过就收起红点、按钮置灰 */
+    var w = AM.wallet.data;
+    if (w.signinDone && w.signinDone[w.signinDay]) {
+      document.getElementById('homeSignChip').textContent = '今日已领';
+      document.getElementById('homeSignDot').style.display = 'none';
+      var sBtn = document.getElementById('homeSignBtn');
+      sBtn.classList.add('is-disabled');
+      sBtn.textContent = '已签到';
+    }
+
+    /* 农场装饰：已拥有的装饰放上场景两侧 */
+    var owned = w.owned || [];
+    var slots = [document.getElementById('homeDecoL'), document.getElementById('homeDecoR')];
+    var used = 0;
+    for (var i = 0; i < AM.DB.decorations.length && used < slots.length; i++) {
+      if (owned.indexOf(AM.DB.decorations[i].id) >= 0) {
+        slots[used].textContent = AM.DB.decorations[i].emoji;
+        slots[used].title = AM.DB.decorations[i].name;
+        used++;
+      }
+    }
+  })();
+  </script>
+</body>
+</html>
