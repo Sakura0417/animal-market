@@ -30,7 +30,7 @@
 <!-- 本表由 tools/devlog-trim.cjs 自动生成；归档是冷存，改本表不会同步文件 -->
 | 月份 | 归档文件 | 条数 | 时间范围 |
 |---|---|---|---|
-| 2026-09 | [DEVLOG-2026-09.md](docs/devlog/DEVLOG-2026-09.md) | 103 | 2026-09-05 23:44 ~ 2026-09-22 10:10 |
+| 2026-09 | [DEVLOG-2026-09.md](docs/devlog/DEVLOG-2026-09.md) | 104 | 2026-09-05 23:44 ~ 2026-09-22 10:26 |
 <!-- DEVLOG-INDEX:END -->
 
 ## 遗留与后续（对照交接行动项）
@@ -39,6 +39,43 @@
 - **A5**：特效视觉对拍（时长/幅度/缓动手感，对照原型）。
 - **A7**：真实广告接入（Owner 申请广告位 ID 后填 `WxBridge.adUnitId`）。
 - 新增难度外环（L13+）如需上线，建议用模拟器对 L13–L30 做一轮全量曲线扫描存档。
+
+---
+
+## [2026-10-16 16:53] 仓库结构重整：外围资料并入仓库（仓库根即工程根），修复全部跨层引用
+- **变更**：
+  ① **根因**：git 边界（`animal-market-cocos/`）与技术依赖边界（原工作区根）不重合 ——
+     `tools/process-animal-art.cjs` 默认读 `../raw-art/animals-2048-src`、`tools/gen-splash-page.cjs`
+     读 `../../store-assets/*.jpg`、`store-assets/font-subset.py` 硬编码 `D:\微信小游戏\...`。
+     clone 当前仓库后这些工具**直接跑不起来**（不只是文档过时）。
+  ② **迁移（原工作区根 → 仓库根下）**：`raw-art/`、`store-assets/`、
+     `docs/reference/{prd,tech,research,prototype,handover-20260908}/`、`HANDOVER.md`、`AGENTS.md`、
+     `.workbuddy/memory/`（项目记忆随仓库分发）；`_sim-trace.js` / `_prototype-contract.md` →
+     `_archive/legacy-prototype/`。目标：**clone 单仓库即可开发**，不再依赖仓库外任何资料。
+  ③ **🔴 遵守既有决策**：`raw-art/` 仍留在 `assets/` 之外（2026-09-10 条目：进 assets 会被编辑器当纹理导入
+     拖慢 library，进 resources 会被无条件打进 4MB 主包）。迁移只是把它从「工作区根」挪到「仓库根」，位置语义不变。
+  ④ **引用修复（4 处代码，消除 cwd 依赖 / 硬编码）**：`process-animal-art.cjs` 默认 srcDir/outDir 改
+     `path.resolve(__dirname,'..')`；`gen-splash-page.cjs` / `gen-splash.cjs` 的 `ROOT` 由「工作区根（`..`,`..`）」
+     收敛为「仓库根（`..`）」并去掉 `animal-market-cocos/` 前缀；`font-subset.py` 去掉硬编码绝对路径改 `__file__` 相对。
+  ⑤ **文档路径同步**：`README.md`（新增「仓库结构」表 + 修"与原型对拍"过期表述）、
+     `HANDOVER.md`（§3.1 结构图重写 + §4.3/§9.1/§9.4/§10.2/§10.7/§12 路径换算 + §11 补执行状态）、
+     `AGENTS.md`（重写为仓库内入口，vault 路径标注"非仓库依赖"）、`dev-plan` / `grid-scheme-review` /
+     `review-and-plan` / `prd2-reconciliation` 交叉引用、`AnimalArt.ts` / `GameView.ts` 注释；
+     新增 `docs/reference/README.md`（上游资料索引 + 两条"不要做"）。
+  ⑥ **仓库卫生**：`extensions/`（第三方编辑器扩展，已跟踪 59M）移出跟踪 + 入 `.gitignore`（新设备在编辑器内重装）；
+     删除 `tools/sim/refrun.mjs`（已废弃，唯一指向已归档 `_sim-trace.js` 的失效路径）；
+     删除 `assets/resources/art.meta`（孤儿 meta，`art/` 目录已不存在）。
+- **涉及文件**：本条目 ②④⑤⑥ 全部；单 commit `5f406dd`（186 增 / 142 删 / 12 改）。
+- **成果・验证**：
+  - `npx tsc -p tsconfig.typecheck.json` → **0 错误**（存量 11 条宽松报错也已为零）
+  - `npm run sim:verify` → **12/12 全绿**（随机流零扰动）
+  - 工具默认路径解析 **10/10** 通过；`node store-assets/build-basic-info.cjs`（规则校验全通过 + 重出填写单）、
+    `node tools/gen-splash-page.cjs --only=preview`（重出 3 张机型预览）实跑成功
+  - 4 份 HTML 文档内部 `_shared/` 资源链接完整性校验全 OK
+  - **端到端验收**：`git clone` 到临时目录 → 12/12 关键依赖随仓库到达（raw-art 源图 / store-assets master /
+    PRD / HANDOVER / .workbuddy 记忆 / Game.scene / 插屏模板）→ **在 clone 内跑 `sim:verify` 仍 12/12**
+  - 代码文件（*.cjs/*.mjs/*.ts/*.py）中仓库外绝对路径**清零**（残留仅 `.workbuddy` 日志与 `docs/devlog/`
+    归档的历史记录，按「归档零改写、只换位置」纪律不动）
 
 ---
 
@@ -519,13 +556,3 @@
   ④ **字效微调贴参考图**：描边 r12→r10（屏显≈3.9px，参考图 3-4px）、字身 r5→r6（更粗重）、blitMask 阈值 0.05→0.02（边缘低覆盖像素也上色 ⇒ 描边更连贯）。
 - **涉及文件**：`tools/gen-splash-page.cjs`（clearTitleZone + 叶片外移 + 字效参数 + 头注 v6.1）、重生成 `assets/splash/splash-bg.png`（325KB）+ `build-templates/wechatgame/splash-bg.png`；已同步 `build/wechatgame/splash-bg.png`。**游戏源码与 core 零改动**。
 - **成果・验证**：生成器全绿；812 预览目检：四字**无任何遮挡**、描边**连续无断点**、叶片字角外侧不压字（右上叶与「市」顶留 5-10px）、上方云距字顶 15-20px 属背景层次未贴字。⚠️ 待用户开发者工具编译刷新目检确认。
-
----
-
-## [2026-09-22 10:26] 启动页 v6：标题换参考图圆润卡通字效 + 背景层次感增强（1:1 还原）
-- **变更**（用户参考图：泡泡圆体/单层深橄榄粗描边/奶白填充/深绿硬投影/叶片装饰；背景黄绿→薄荷青绿渐变/羽化远云/2-3 层波浪草地）：
-  ① **标题字效**（`tools/gen-splash-page.cjs`）：紧凑整串 + 粗圆字身 r5 + **单层深橄榄粗描边 r12**（#3c5c3b，屏显约 4.6px）+ 奶白填充 #fffdf5 + **深绿硬投影**（#2e4a2e，实边、右下偏移 9,11，α150）+ **两片橄榄小叶装饰**（`leafPatch` 参数椭圆逐像素渲染，绕开 pureimage 不透明画布；"动"左下 +35°、"市"右上 -35°）。
-  ② **底图重生成**（参考图背景）：暖黄绿 #E8F5D6→薄荷青绿 #D0F0E8→#B8E8D8 渐变天空 / 2-3 朵羽化远云（高斯模糊、低对比融合）/ **4 层波浪草地**（远淡近浓、空气透视）/ 保留黄卡车+猪羊鸡主体（腮红/高光/细橄榄描边统一）。
-  ③ first-screen.js 不动（维持 v3 成品态：无渐入、白色圆角跑道、小鸡 48px、GL 卡车 60px）。
-- **涉及文件**：`tools/gen-splash-page.cjs`（v6 标题 + leafPatch/drawLeaf + 调色常量）、`store-assets/splash-page-master.jpg`（重生成，v3 图仍存 `-v3.jpg`）、重生成 `assets/splash/splash-bg.png`（326KB）+ `build-templates/wechatgame/splash-bg.png`；已同步 `build/wechatgame/splash-bg.png`。**游戏源码与 core 零改动**。
-- **成果・验证**：生成器全绿（标题 681x166、叶片两片、预览×3）；**像素实测**标题区主色：奶白填充 60789px、深橄榄描边 (64,96,64) 31523px、深绿投影 ✓ ——"视觉评估报冷灰"系低饱和橄榄绿误判，参考图本体即 #4a6741 色系，配色准确无需调；背景层次评估确认渐变/羽化云/4 层波浪草地符合且超出预期。⚠️ 待用户开发者工具编译刷新目检。正式构建由 build-templates 自动生效。
